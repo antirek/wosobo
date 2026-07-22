@@ -1,0 +1,222 @@
+:root {
+  color-scheme: light;
+  --bg: #e8eef2;
+  --bg-accent: #d5e2ea;
+  --ink: #1a242c;
+  --muted: #5a6b76;
+  --card: #f7fafc;
+  --line: #c5d2db;
+  --accent: #0f6e56;
+  --accent-ink: #fff;
+  --danger: #9b1c1c;
+  --ok: #0f6e56;
+  --warn: #8a5a00;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  line-height: 1.45;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #cfe0ea 0%, transparent 55%),
+    radial-gradient(900px 400px at 100% 0%, #d9e8df 0%, transparent 50%),
+    var(--bg);
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.header h1 {
+  margin: 0 0 0.35rem;
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-weight: 600;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card {
+  margin-top: 1.25rem;
+  padding: 1.1rem 1.15rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+input {
+  font: inherit;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 0.55rem 0.9rem;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.linkish {
+  margin-top: 0.5rem;
+  width: fit-content;
+  background: transparent;
+  color: var(--accent);
+  border-color: transparent;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.hint code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.84em;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.status-card {
+  align-items: start;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 0.92rem;
+}
+
+.status-registered {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.status-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-registering,
+.status-connecting,
+.status-attaching,
+.status-starting,
+.status-reconnecting {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.dial-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.dial-field {
+  margin: 0;
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+button.success {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+  width: fit-content;
+}
+
+.incoming-card {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 1px rgba(15, 110, 86, 0.15);
+}
+
+.incoming-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.call-idle {
+  color: var(--muted);
+}
+
+.call-dialing,
+.call-ringing,
+.call-connecting {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.call-incoming {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.call-in-call {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.log {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 0.65rem;
+  background: #101820;
+  color: #d7e2ea;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -1,0 +1,83 @@
+services:
+  mongo:
+    image: mongo:5.0.8
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  asterisk:
+    image: andrius/asterisk:22
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10099:10000-10099/udp"
+    volumes:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - ./asterisk/sounds/custom:/var/lib/asterisk/sounds/custom:ro
+    restart: unless-stopped
+
+  janus:
+    image: canyan/janus-gateway:1.1.4
+    command: ["/usr/local/bin/janus", "-F", "/usr/local/etc/janus"]
+    ports:
+      - "8088:8088"
+      - "8188:8188"
+      - "7088:7088"
+      - "20000-20100:20000-20100/udp"
+    volumes:
+      - ./janus/janus.jcfg:/usr/local/etc/janus/janus.jcfg:ro
+      - ./janus/janus.transport.http.jcfg:/usr/local/etc/janus/janus.transport.http.jcfg:ro
+      - ./janus/janus.transport.websockets.jcfg:/usr/local/etc/janus/janus.transport.websockets.jcfg:ro
+      - ./janus/janus.plugin.sip.jcfg:/usr/local/etc/janus/janus.plugin.sip.jcfg:ro
+    depends_on:
+      - asterisk
+    restart: unless-stopped
+
+  softphone-api:
+    build: ./softphone-api
+    ports:
+      - "3101:3101"
+    environment:
+      PORT: "3101"
+      MONGODB_URI: mongodb://mongo:27017/janus_softphone
+      CORS_ORIGIN: http://localhost:3100
+      JANUS_WS_URL: ws://janus:8188
+      INTERNAL_TOKEN: dev-internal-token
+    depends_on:
+      - mongo
+      - janus
+    restart: unless-stopped
+
+  admin-api:
+    build: ./admin-api
+    ports:
+      - "127.0.0.1:3121:3121"
+    environment:
+      PORT: "3121"
+      MONGODB_URI: mongodb://mongo:27017/janus_softphone
+      CORS_ORIGIN: http://localhost:3120
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: admin
+      SOFTPHONE_INTERNAL_URL: http://softphone-api:3101
+      INTERNAL_TOKEN: dev-internal-token
+    depends_on:
+      - mongo
+      - softphone-api
+    restart: unless-stopped
+
+  monitor:
+    build: ./monitor
+    ports:
+      - "3110:3110"
+    environment:
+      PORT: "3110"
+      JANUS_ADMIN_URL: http://janus:7088/admin
+      JANUS_ADMIN_SECRET: janusoverlord
+    depends_on:
+      - janus
+    restart: unless-stopped
+
+volumes:
+  mongo_data:

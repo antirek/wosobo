@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Janus Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Serif:wght@600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div>
+          <h1>Janus Monitor</h1>
+          <p class="lede">
+            Только Janus Admin API: кто REGISTER’нут и какие разговоры идут. Ники = SIP
+            <code>display_name</code>.
+          </p>
+        </div>
+        <div class="header-actions">
+          <label class="auto">
+            <input type="checkbox" id="autoRefresh" checked />
+            авто 3с
+          </label>
+          <button type="button" id="refreshBtn">Обновить</button>
+        </div>
+      </header>
+
+      <section class="cards" id="summary"></section>
+      <p class="meta" id="meta">Загрузка…</p>
+      <p class="error" id="error" hidden></p>
+
+      <section class="panel">
+        <h2>Онлайн (SIP REGISTER)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ник (display_name)</th>
+                <th>SIP user</th>
+                <th>Identity</th>
+                <th>Registration</th>
+                <th>Call status</th>
+                <th>Session / Handle</th>
+              </tr>
+            </thead>
+            <tbody id="onlineBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Разговоры</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ник</th>
+                <th>From (identity)</th>
+                <th>To (callee)</th>
+                <th>Call status</th>
+                <th>Established</th>
+                <th>Handle</th>
+              </tr>
+            </thead>
+            <tbody id="callsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Сырые сессии</h2>
+        <pre class="raw" id="sessionsRaw">—</pre>
+      </section>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

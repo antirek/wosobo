@@ -1,0 +1,13 @@
+general: {
+	# IP в SIP SDP (c=), куда PBX шлёт RTP.
+	# Docker: IP хоста с пробросом UDP 20000-20100 (сейчас LAN этой машины).
+	# Внешняя АТС в интернете: нужен белый IP + port-forward, не только LAN.
+	sdp_ip = "192.168.0.102"
+
+	keepalive_interval = 120
+	# false: стабильнее для стенда; true + STUN — если Contact на внешней АТС должен быть public
+	behind_nat = false
+	register_ttl = 3600
+	rtp_port_range = "20000-20100"
+	sip_timer_t1x64 = 32000
+}

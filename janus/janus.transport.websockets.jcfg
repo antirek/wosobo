@@ -1,0 +1,16 @@
+general: {
+	json = "compact"
+	ws = true
+	ws_port = 8188
+	wss = false
+}
+
+admin: {
+	admin_ws = false
+	admin_ws_port = 7188
+	admin_wss = false
+}
+
+cors: {
+	allow_origin = "http://localhost:3100"
+}
