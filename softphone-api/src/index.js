@@ -24,9 +24,11 @@ const client = new MongoClient(MONGODB_URI);
 await client.connect();
 const db = client.db();
 const subscribers = db.collection("subscribers");
+const sessionsCol = db.collection("softphone_sessions");
 
-/** @type {Map<string, { token: string, nick: string, createdAt: number, expiresAt: number }>} */
-const sessions = new Map();
+await sessionsCol.createIndex({ token: 1 }, { unique: true });
+// Mongo TTL: expiresAt must be Date
+await sessionsCol.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 function normalizeNick(nick) {
   return String(nick || "")
@@ -42,15 +44,26 @@ function createToken() {
   return randomBytes(24).toString("hex");
 }
 
-function getSession(token) {
+/**
+ * @param {string} token
+ * @returns {Promise<{ token: string, nick: string, createdAt: number, expiresAt: number } | null>}
+ */
+async function getSession(token) {
   if (!token) return null;
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (Date.now() > s.expiresAt) {
-    sessions.delete(token);
+  const doc = await sessionsCol.findOne({ token });
+  if (!doc) return null;
+  const expiresAtMs =
+    doc.expiresAt instanceof Date ? doc.expiresAt.getTime() : Number(doc.expiresAt);
+  if (!expiresAtMs || Date.now() > expiresAtMs) {
+    await sessionsCol.deleteOne({ token }).catch(() => {});
     return null;
   }
-  return s;
+  return {
+    token: doc.token,
+    nick: doc.nick,
+    createdAt: doc.createdAt instanceof Date ? doc.createdAt.getTime() : Number(doc.createdAt),
+    expiresAt: expiresAtMs,
+  };
 }
 
 function requireInternal(req, res, next) {
@@ -91,29 +104,36 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.post("/api/session", async (req, res) => {
-  const nick = normalizeNick(req.body?.nick);
-  if (!isValidNick(nick)) {
-    return res.status(400).json({ error: "Некорректный ник" });
-  }
-  const doc = await subscribers.findOne({ nick });
-  if (!doc || !doc.enabled) {
-    return res.status(404).json({ error: "Абонент не найден или отключён", nick });
-  }
-  if (!doc.sip?.password) {
-    return res.status(404).json({ error: "Абонент без SIP-привязки", nick });
-  }
+  try {
+    const nick = normalizeNick(req.body?.nick);
+    if (!isValidNick(nick)) {
+      return res.status(400).json({ error: "Некорректный ник" });
+    }
+    const doc = await subscribers.findOne({ nick });
+    if (!doc || !doc.enabled) {
+      return res.status(404).json({ error: "Абонент не найден или отключён", nick });
+    }
+    if (!doc.sip?.password) {
+      return res.status(404).json({ error: "Абонент без SIP-привязки", nick });
+    }
 
-  const token = createToken();
-  const createdAt = Date.now();
-  const expiresAt = createdAt + SESSION_TTL_MS;
-  sessions.set(token, { token, nick, createdAt, expiresAt });
-  return res.json({ token, nick, expiresAt });
+    const token = createToken();
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + SESSION_TTL_MS);
+    await sessionsCol.insertOne({ token, nick, createdAt, expiresAt });
+    return res.json({ token, nick, expiresAt: expiresAt.getTime() });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message || String(err) });
+  }
 });
 
-app.delete("/api/session", (req, res) => {
+app.delete("/api/session", async (req, res) => {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token) sessions.delete(token);
+  if (token) {
+    await sessionsCol.deleteOne({ token }).catch(() => {});
+  }
   return res.json({ ok: true });
 });
 
@@ -144,22 +164,21 @@ wss.on("connection", async (ws, req) => {
   try {
     const url = new URL(req.url || "", "http://localhost");
     const token = url.searchParams.get("token") || "";
-    const session = getSession(token);
+    const session = await getSession(token);
     if (!session) {
       ws.send(JSON.stringify({ type: "error", code: "unauthorized", message: "Нет сессии" }));
       ws.close(4001, "unauthorized");
       return;
     }
 
-    const line = lineManager.getLine(session.nick);
-    if (!line) {
-      // try ensure once
+    let live = lineManager.getLine(session.nick);
+    if (!live) {
       const sub = await lineManager.getSubscriber(session.nick);
       if (sub?.enabled) {
         await lineManager.ensureLine(sub);
       }
+      live = lineManager.getLine(session.nick);
     }
-    const live = lineManager.getLine(session.nick);
     if (!live) {
       ws.send(
         JSON.stringify({
@@ -212,6 +231,7 @@ wss.on("connection", async (ws, req) => {
 server.listen(PORT, async () => {
   console.log(`softphone-api listening on :${PORT}`);
   console.log(`Janus WS: ${JANUS_WS_URL}`);
+  console.log(`Session TTL: ${SESSION_TTL_MS}ms (Mongo softphone_sessions)`);
   try {
     await lineManager.boot();
   } catch (err) {

@@ -94,7 +94,9 @@ keepalive: client ping каждые 20s; server уже отвечает pong
 visibilitychange / online → если wantConnected и WS не OPEN → reconnect now
 ```
 
-Token в `sessionStorage`; при 4001 — очистить сессию / показать «войдите снова».
+Token в `sessionStorage` + **Mongo `softphone_sessions`** (TTL 24h) — переживает рестарт softphone-api.
+При 4001: клиент делает silent `POST /api/session` и снова открывает WSS (не выкидывает на login, пока ник валиден).
+При 4002 (`no_line`): обычный backoff — ждём boot REGISTER после рестарта API.
 
 ### 5.2. Сервер (C) — уже реализовано
 

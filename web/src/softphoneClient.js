@@ -4,9 +4,6 @@ const PING_MS = 20_000;
 const ICE_DISCONNECT_MS = 5_000;
 const ICE_RESTART_TIMEOUT_MS = 12_000;
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
-/** Permanent: do not auto-reconnect */
-const STOP_CODES = new Set([4001, 4003]);
-
 /**
  * @param {RTCPeerConnection} pc
  * @param {number} [timeoutMs]
@@ -36,7 +33,10 @@ function jitteredDelay(ms) {
 /**
  * Softphone signaling + WebRTC client (no SIP credentials, no Janus WS).
  *
- * @param {{ token: string }} opts
+ * @param {{
+ *   token: string,
+ *   refreshSession?: () => Promise<string>,
+ * }} opts
  * @param {{
  *   onLog?: (line: string) => void,
  *   onLine?: (status: string, detail?: string) => void,
@@ -45,15 +45,18 @@ function jitteredDelay(ms) {
  *   onRemoteStream?: (stream: MediaStream | null) => void,
  *   onError?: (err: Error) => void,
  *   onAuthLost?: () => void,
+ *   onToken?: (token: string) => void,
  * }} callbacks
  */
 export function connectSoftphone(opts, callbacks = {}) {
   const log = (line) => callbacks.onLog?.(line);
+  let currentToken = opts.token;
   /** @type {WebSocket | null} */
   let ws = null;
   let wantConnected = true;
   let closed = false;
   let reconnectAttempt = 0;
+  let sessionRefreshInFlight = false;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let reconnectTimer = null;
   /** @type {ReturnType<typeof setInterval> | null} */
@@ -453,6 +456,37 @@ export function connectSoftphone(opts, callbacks = {}) {
     }, delay);
   }
 
+  async function refreshSessionAndReconnect() {
+    if (!wantConnected || closed) return;
+    if (!opts.refreshSession) {
+      wantConnected = false;
+      callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
+      callbacks.onAuthLost?.();
+      callbacks.onLine?.("offline", "unauthorized");
+      return;
+    }
+    if (sessionRefreshInFlight) return;
+    sessionRefreshInFlight = true;
+    callbacks.onLine?.("reconnecting", "обновление сессии");
+    log("session unauthorized → refresh token");
+    try {
+      const newToken = await opts.refreshSession();
+      if (!newToken) throw new Error("empty token");
+      currentToken = newToken;
+      callbacks.onToken?.(newToken);
+      reconnectAttempt = 0;
+      scheduleReconnect("session refreshed");
+    } catch (err) {
+      log(`session refresh failed: ${err.message || err}`);
+      wantConnected = false;
+      callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
+      callbacks.onAuthLost?.();
+      callbacks.onLine?.("offline", "unauthorized");
+    } finally {
+      sessionRefreshInFlight = false;
+    }
+  }
+
   function openWs() {
     if (!wantConnected || closed) return;
     clearReconnectTimer();
@@ -472,7 +506,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
     }
 
-    const url = softphoneWsUrl(opts.token);
+    const url = softphoneWsUrl(currentToken);
     log(`WS ${url.replace(/token=[^&]+/, "token=…")}`);
     const socket = new WebSocket(url);
     ws = socket;
@@ -497,18 +531,19 @@ export function connectSoftphone(opts, callbacks = {}) {
         return;
       }
 
-      if (STOP_CODES.has(ev.code)) {
+      if (ev.code === 4001) {
+        refreshSessionAndReconnect();
+        return;
+      }
+
+      if (ev.code === 4003) {
         wantConnected = false;
-        if (ev.code === 4001) {
-          callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
-          callbacks.onAuthLost?.();
-        } else if (ev.code === 4003) {
-          callbacks.onError?.(new Error("Уже открыта другая вкладка softphone"));
-        }
+        callbacks.onError?.(new Error("Уже открыта другая вкладка softphone"));
         callbacks.onLine?.("offline", ev.reason || `closed ${ev.code}`);
         return;
       }
 
+      // 4002 no_line — API ещё поднимает REGISTER после рестарта
       scheduleReconnect(ev.reason || `code ${ev.code}`);
     };
 

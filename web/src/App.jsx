@@ -89,7 +89,19 @@ export default function App() {
   function startSoftphone(sessionToken) {
     stopSoftphone();
     sessionRef.current = connectSoftphone(
-      { token: sessionToken },
+      {
+        token: sessionToken,
+        async refreshSession() {
+          const stored = getStoredSession();
+          const useNick = stored?.nick || nick;
+          if (!useNick) throw new Error("нет ника для refresh");
+          appendLog(`refresh session ${useNick}`);
+          const data = await createSession(useNick);
+          setToken(data.token);
+          setNick(data.nick);
+          return data.token;
+        },
+      },
       {
         onLog: appendLog,
         onLine(next, detail) {
@@ -145,6 +157,9 @@ export default function App() {
         },
         onError(err) {
           setError(err.message);
+        },
+        onToken(nextToken) {
+          setToken(nextToken);
         },
         onAuthLost() {
           appendLog("сессия истекла");
