@@ -24,6 +24,7 @@ const CALL_LABELS = {
   outgoing: "Исходящий…",
   incoming: "Входящий",
   incall: "Разговор",
+  "reconnecting-media": "Восстановление медиа…",
 };
 
 export default function App() {
@@ -55,8 +56,14 @@ export default function App() {
   }, [callState, callDetail]);
 
   const isIncoming = callState === "incoming";
-  const inCall = callState === "outgoing" || callState === "incoming" || callState === "incall";
+  const inCall =
+    callState === "outgoing" ||
+    callState === "incoming" ||
+    callState === "incall" ||
+    callState === "reconnecting-media";
   const canDial = status === "registered" && callState === "idle" && !busy;
+  const showReconnect =
+    Boolean(token) && (status === "offline" || status === "error" || status === "reconnecting");
 
   function appendLog(line) {
     const stamp = new Date().toLocaleTimeString();
@@ -138,6 +145,15 @@ export default function App() {
         },
         onError(err) {
           setError(err.message);
+        },
+        onAuthLost() {
+          appendLog("сессия истекла");
+          stopSoftphone();
+          clearStoredSession();
+          setNick("");
+          setToken("");
+          setStatus("offline");
+          setStatusDetail("");
         },
       },
     );
@@ -233,6 +249,12 @@ export default function App() {
     setMuted(next);
   }
 
+  function onReconnect() {
+    setError("");
+    appendLog("ручной reconnect");
+    sessionRef.current?.reconnectNow();
+  }
+
   function onCopyLog() {
     const text = logLines.length ? logLines.join("\n") : "";
     if (!text) return;
@@ -290,6 +312,11 @@ export default function App() {
 
       <section className="card status-card">
         <div className={`pill status-${status}`}>{statusText}</div>
+        {showReconnect ? (
+          <button type="button" className="secondary" onClick={onReconnect} disabled={busy}>
+            Подключить снова
+          </button>
+        ) : null}
       </section>
 
       {error ? (
@@ -342,7 +369,7 @@ export default function App() {
           )}
         </form>
 
-        {(callState === "incall" || callState === "outgoing") && (
+        {(callState === "incall" || callState === "outgoing" || callState === "reconnecting-media") && (
           <button type="button" className="secondary" onClick={onToggleMute}>
             {muted ? "Включить микрофон" : "Mute"}
           </button>

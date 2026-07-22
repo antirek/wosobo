@@ -284,9 +284,10 @@ WS /ws/softphone?token=<token>
 | `accept` | `jsep: RTCSessionDescriptionInit` | Ответ на входящий |
 | `decline` | — | Отклонить входящий |
 | `hangup` | — | Сброс исходящего / разговора |
+| `update` | `jsep` | ICE restart / ответ на re-INVITE → Janus SIP `update` |
 | `jsep` | `jsep` | Дополнительный SDP (редко; обычно в dial/accept) |
 | `trickle` | `candidate: RTCIceCandidateInit \| null` | ICE; `null` = end-of-candidates |
-| `ping` | — | Опционально keepalive app-level |
+| `ping` | — | keepalive app-level |
 
 **Исходящий звонок (порядок):**
 
@@ -309,6 +310,7 @@ WS /ws/softphone?token=<token>
 | `line` | `status`, `detail?` | Статус SIP/линии |
 | `call` | `state`, `detail?`, `caller?` | Фаза звонка |
 | `incoming` | `caller`, `jsep?` | Входящий INVITE |
+| `updatingcall` | `jsep?` | Remote re-INVITE — ответить `update` + answer |
 | `jsep` | `jsep` | SDP от Janus (answer/offer) |
 | `trickle` | `candidate` | ICE от Janus (`completed` можно отдельным флагом) |
 | `error` | `code`, `message` | Ошибка |
@@ -326,7 +328,7 @@ WS /ws/softphone?token=<token>
 | `reconnecting` | Сервер чинит Janus/SIP |
 | `error` | Ошибка (detail) |
 
-**call.state:** `idle` | `outgoing` | `incoming` | `incall`
+**call.state:** `idle` | `outgoing` | `incoming` | `incall` | `reconnecting-media` (только UI, при ICE restart)
 
 Пример `hello`:
 
@@ -352,6 +354,7 @@ WS /ws/softphone?token=<token>
 | `accept` + jsep | `accept` + jsep |
 | `decline` | `decline` |
 | `hangup` | `hangup` |
+| `update` | Janus SIP `update` + jsep |
 | `trickle` | Janus trickle |
 | — | keepalive session |
 | нет softphone + incoming | `decline` code 486 |
@@ -439,7 +442,7 @@ WS /ws/softphone?token=<token>
 
 - [x] Нет WS → incoming 486
 - [x] Server reconnect Janus (базовый backoff в LineManager)
-- [ ] Softphone: auto-reconnect WSS после обрыва (улучшение позже)
+- [x] Softphone: auto-reconnect WSS после обрыва ([`PLAN-reconnect.md`](./PLAN-reconnect.md) R1)
 
 ### S6 — Чистка
 

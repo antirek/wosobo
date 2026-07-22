@@ -294,6 +294,10 @@ class Line {
       this._hangupFromClient();
       return;
     }
+    if (type === "update") {
+      this._update(msg);
+      return;
+    }
     if (type === "trickle") {
       if (this.session && this.handleId) {
         this.session.trickle(this.handleId, msg.candidate ?? null);
@@ -376,6 +380,29 @@ class Line {
       /* ignore */
     }
     this._resetCall();
+  }
+
+  /** ICE restart / re-INVITE answer — Janus SIP `update` */
+  /** @param {object} msg */
+  _update(msg) {
+    if (!this.session || !this.handleId) {
+      this._sendToSoftphone({ type: "error", code: "no_line", message: "Линия не готова" });
+      return;
+    }
+    if (this.callPhase !== "incall" && this.callPhase !== "outgoing") {
+      this._sendToSoftphone({
+        type: "error",
+        code: "no_call",
+        message: "update только во время звонка",
+      });
+      return;
+    }
+    if (!msg.jsep?.sdp) {
+      this._sendToSoftphone({ type: "error", code: "no_jsep", message: "Нужен jsep для update" });
+      return;
+    }
+    this.log(`SIP update (${msg.jsep.type || "?"})`);
+    this.session.sendMessageFire(this.handleId, { request: "update" }, msg.jsep);
   }
 
   _hangupFromClient() {
@@ -508,6 +535,24 @@ class Line {
         this._sendCall({ state: "incall", detail: result.username || "" });
       }
       if (jsep) this._sendToSoftphone({ type: "jsep", jsep });
+    } else if (event === "updating") {
+      this.log("SIP updating (re-INVITE in progress)");
+      this._sendToSoftphone({ type: "log", message: "SIP updating" });
+    } else if (event === "updated") {
+      this.log("SIP updated");
+      this._sendToSoftphone({ type: "log", message: "SIP updated" });
+      if (jsep) this._sendToSoftphone({ type: "jsep", jsep });
+      if (this.callPhase === "outgoing" || this.callPhase === "incall") {
+        this.callPhase = "incall";
+        this._sendCall({ state: "incall", detail: "media updated" });
+      }
+    } else if (event === "updatingcall") {
+      // Remote re-INVITE — softphone must answer with type:update + answer jsep
+      this.log("SIP updatingcall (remote re-INVITE)");
+      /** @type {Record<string, unknown>} */
+      const payload = { type: "updatingcall" };
+      if (jsep) payload.jsep = jsep;
+      this._sendToSoftphone(payload);
     } else if (event === "hangup") {
       const reason = result.reason || (result.code != null ? String(result.code) : "");
       this.log(`remote hangup ${reason}`);

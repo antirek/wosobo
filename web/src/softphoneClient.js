@@ -1,5 +1,12 @@
 import { softphoneWsUrl } from "./api.js";
 
+const PING_MS = 20_000;
+const ICE_DISCONNECT_MS = 5_000;
+const ICE_RESTART_TIMEOUT_MS = 12_000;
+const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
+/** Permanent: do not auto-reconnect */
+const STOP_CODES = new Set([4001, 4003]);
+
 /**
  * @param {RTCPeerConnection} pc
  * @param {number} [timeoutMs]
@@ -22,6 +29,10 @@ function waitIceGatheringComplete(pc, timeoutMs = 2500) {
   });
 }
 
+function jitteredDelay(ms) {
+  return ms + Math.floor(Math.random() * Math.min(400, ms * 0.2));
+}
+
 /**
  * Softphone signaling + WebRTC client (no SIP credentials, no Janus WS).
  *
@@ -33,12 +44,26 @@ function waitIceGatheringComplete(pc, timeoutMs = 2500) {
  *   onIncoming?: (caller: string, jsep?: object) => void,
  *   onRemoteStream?: (stream: MediaStream | null) => void,
  *   onError?: (err: Error) => void,
+ *   onAuthLost?: () => void,
  * }} callbacks
  */
 export function connectSoftphone(opts, callbacks = {}) {
   const log = (line) => callbacks.onLog?.(line);
+  /** @type {WebSocket | null} */
   let ws = null;
+  let wantConnected = true;
   let closed = false;
+  let reconnectAttempt = 0;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let reconnectTimer = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let pingTimer = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let iceDisconnectTimer = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let iceRestartTimer = null;
+  let iceRestartTried = false;
+  let iceRestartInFlight = false;
   /** @type {RTCPeerConnection | null} */
   let pc = null;
   /** @type {MediaStream | null} */
@@ -65,13 +90,132 @@ export function connectSoftphone(opts, callbacks = {}) {
     callbacks.onRemoteStream?.(null);
   }
 
+  function stopPing() {
+    if (pingTimer) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
+  }
+
+  function startPing() {
+    stopPing();
+    pingTimer = setInterval(() => {
+      send({ type: "ping" });
+    }, PING_MS);
+  }
+
+  function clearReconnectTimer() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  }
+
+  function clearIceDisconnectTimer() {
+    if (iceDisconnectTimer) {
+      clearTimeout(iceDisconnectTimer);
+      iceDisconnectTimer = null;
+    }
+  }
+
+  function clearIceRestartTimer() {
+    if (iceRestartTimer) {
+      clearTimeout(iceRestartTimer);
+      iceRestartTimer = null;
+    }
+  }
+
+  function localCallCleanup(reason) {
+    clearIceDisconnectTimer();
+    clearIceRestartTimer();
+    iceRestartInFlight = false;
+    iceRestartTried = false;
+    if (phase === "idle" && !pc) return;
+    log(`local call cleanup${reason ? `: ${reason}` : ""}`);
+    phase = "idle";
+    pendingOffer = null;
+    cleanupPc();
+    callbacks.onCall?.("idle", reason);
+  }
+
+  function hangupDueToMedia(reason) {
+    const msg = reason || "Связь потеряна";
+    log(msg);
+    send({ type: "hangup" });
+    localCallCleanup(msg);
+    callbacks.onError?.(new Error(msg));
+  }
+
+  /**
+   * One ICE restart per call via Janus SIP `update`.
+   * @returns {Promise<boolean>} true if restart was started
+   */
+  async function tryIceRestart(reason) {
+    if (iceRestartTried || iceRestartInFlight) return false;
+    if (phase !== "incall" && phase !== "outgoing") return false;
+    if (!pc || !ws || ws.readyState !== WebSocket.OPEN) return false;
+
+    iceRestartTried = true;
+    iceRestartInFlight = true;
+    clearIceDisconnectTimer();
+    log(`ICE restart: ${reason || "media recovery"}`);
+    callbacks.onCall?.("reconnecting-media", reason || "ICE restart");
+
+    clearIceRestartTimer();
+    iceRestartTimer = setTimeout(() => {
+      iceRestartTimer = null;
+      if (iceRestartInFlight) {
+        iceRestartInFlight = false;
+        hangupDueToMedia("Связь потеряна (ICE restart timeout)");
+      }
+    }, ICE_RESTART_TIMEOUT_MS);
+
+    try {
+      trickleEnabled = false;
+      pendingRemoteCandidates = [];
+      const offer = await pc.createOffer({ iceRestart: true, offerToReceiveAudio: true });
+      await pc.setLocalDescription(offer);
+      const jsep = await finalizeLocalJsep(offer);
+      send({ type: "update", jsep });
+      trickleEnabled = true;
+      return true;
+    } catch (err) {
+      iceRestartInFlight = false;
+      clearIceRestartTimer();
+      log(`ICE restart failed: ${err.message || err}`);
+      hangupDueToMedia("Связь потеряна (ICE restart failed)");
+      return false;
+    }
+  }
+
+  function onMediaAtRisk(reason) {
+    if (phase !== "incall" && phase !== "outgoing") return;
+    if (iceRestartInFlight) return;
+    tryIceRestart(reason).then((started) => {
+      if (!started && (phase === "incall" || phase === "outgoing")) {
+        hangupDueToMedia(reason || "Связь потеряна");
+      }
+    });
+  }
+
+  function onMediaRecovered() {
+    clearIceDisconnectTimer();
+    if (iceRestartInFlight) {
+      iceRestartInFlight = false;
+      clearIceRestartTimer();
+      log("ICE recovered after restart");
+      phase = "incall";
+      callbacks.onCall?.("incall", "media ok");
+    }
+  }
+
   async function ensurePc() {
     if (pc) return pc;
     pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     pc.onicecandidate = (ev) => {
-      if (closed || !trickleEnabled) return;
+      if (closed || !trickleEnabled || ws?.readyState !== WebSocket.OPEN) return;
       if (!ev.candidate) {
         send({ type: "trickle", candidate: null });
         return;
@@ -110,13 +254,39 @@ export function connectSoftphone(opts, callbacks = {}) {
       pushStream();
     };
     pc.onconnectionstatechange = () => {
-      log(`pc state: ${pc?.connectionState}`);
-      if (pc?.connectionState === "failed") {
-        callbacks.onError?.(new Error("WebRTC connection failed (ICE)"));
+      const state = pc?.connectionState;
+      log(`pc state: ${state}`);
+      if (state === "connected") {
+        onMediaRecovered();
+        return;
+      }
+      if (state === "failed") {
+        onMediaAtRisk("WebRTC failed");
       }
     };
     pc.oniceconnectionstatechange = () => {
-      log(`ice: ${pc?.iceConnectionState}`);
+      const state = pc?.iceConnectionState;
+      log(`ice: ${state}`);
+      if (state === "connected" || state === "completed") {
+        onMediaRecovered();
+        return;
+      }
+      if (state === "failed") {
+        onMediaAtRisk("ICE failed");
+        return;
+      }
+      if (state === "disconnected") {
+        clearIceDisconnectTimer();
+        iceDisconnectTimer = setTimeout(() => {
+          iceDisconnectTimer = null;
+          if (
+            pc &&
+            (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed")
+          ) {
+            onMediaAtRisk("ICE disconnected");
+          }
+        }, ICE_DISCONNECT_MS);
+      }
     };
     return pc;
   }
@@ -147,6 +317,9 @@ export function connectSoftphone(opts, callbacks = {}) {
   }
 
   function cleanupPc() {
+    clearIceDisconnectTimer();
+    clearIceRestartTimer();
+    iceRestartInFlight = false;
     trickleEnabled = false;
     pendingRemoteCandidates = [];
     try {
@@ -172,7 +345,30 @@ export function connectSoftphone(opts, callbacks = {}) {
   function resetCallLocal() {
     phase = "idle";
     pendingOffer = null;
+    iceRestartTried = false;
+    iceRestartInFlight = false;
     cleanupPc();
+  }
+
+  /** Answer remote SIP re-INVITE */
+  async function answerUpdatingCall(jsepOffer) {
+    try {
+      log("answering remote re-INVITE");
+      trickleEnabled = false;
+      await ensurePc();
+      if (jsepOffer) await applyRemoteJsep(jsepOffer);
+      const peer = await ensurePc();
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      const jsep = await finalizeLocalJsep(answer);
+      send({ type: "update", jsep });
+      trickleEnabled = true;
+      phase = "incall";
+      callbacks.onCall?.("incall", "re-INVITE ok");
+    } catch (err) {
+      callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+      hangupDueToMedia("Не удалось ответить на re-INVITE");
+    }
   }
 
   /** @param {RTCIceCandidateInit | null | undefined} candidate */
@@ -242,21 +438,87 @@ export function connectSoftphone(opts, callbacks = {}) {
     callbacks.onCall?.("incoming", undefined, caller);
   }
 
+  function scheduleReconnect(reason) {
+    if (!wantConnected || closed) return;
+    clearReconnectTimer();
+    const idx = Math.min(reconnectAttempt, BACKOFF_MS.length - 1);
+    const delay = jitteredDelay(BACKOFF_MS[idx]);
+    reconnectAttempt += 1;
+    callbacks.onLine?.("reconnecting", reason || `попытка ${reconnectAttempt}`);
+    log(`WSS reconnect in ${delay}ms (${reason || "retry"} #${reconnectAttempt})`);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (!wantConnected || closed) return;
+      openWs();
+    }, delay);
+  }
+
   function openWs() {
+    if (!wantConnected || closed) return;
+    clearReconnectTimer();
+    stopPing();
+
+    const prev = ws;
+    ws = null;
+    if (prev) {
+      try {
+        prev.onopen = null;
+        prev.onclose = null;
+        prev.onerror = null;
+        prev.onmessage = null;
+        prev.close();
+      } catch {
+        /* ignore */
+      }
+    }
+
     const url = softphoneWsUrl(opts.token);
     log(`WS ${url.replace(/token=[^&]+/, "token=…")}`);
-    ws = new WebSocket(url);
-    ws.onopen = () => log("signaling connected");
-    ws.onclose = (ev) => {
-      log(`signaling closed ${ev.code}`);
-      if (!closed) {
+    const socket = new WebSocket(url);
+    ws = socket;
+
+    socket.onopen = () => {
+      if (ws !== socket) return;
+      log("signaling connected");
+      reconnectAttempt = 0;
+      startPing();
+    };
+
+    socket.onclose = (ev) => {
+      if (ws !== socket && ws !== null) return;
+      stopPing();
+      ws = null;
+      log(`signaling closed ${ev.code} ${ev.reason || ""}`.trim());
+
+      localCallCleanup("signaling closed");
+
+      if (!wantConnected || closed) {
         callbacks.onLine?.("offline", "signaling closed");
+        return;
       }
+
+      if (STOP_CODES.has(ev.code)) {
+        wantConnected = false;
+        if (ev.code === 4001) {
+          callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
+          callbacks.onAuthLost?.();
+        } else if (ev.code === 4003) {
+          callbacks.onError?.(new Error("Уже открыта другая вкладка softphone"));
+        }
+        callbacks.onLine?.("offline", ev.reason || `closed ${ev.code}`);
+        return;
+      }
+
+      scheduleReconnect(ev.reason || `code ${ev.code}`);
     };
-    ws.onerror = () => {
-      callbacks.onError?.(new Error("WebSocket error"));
+
+    socket.onerror = () => {
+      if (ws !== socket) return;
+      log("WebSocket error");
     };
-    ws.onmessage = async (ev) => {
+
+    socket.onmessage = async (ev) => {
+      if (ws !== socket) return;
       let msg;
       try {
         msg = JSON.parse(String(ev.data));
@@ -266,7 +528,14 @@ export function connectSoftphone(opts, callbacks = {}) {
       const type = msg.type;
       if (type === "hello") {
         if (msg.line?.status) callbacks.onLine?.(msg.line.status, msg.line.detail);
-        if (msg.call?.state) callbacks.onCall?.(msg.call.state, msg.call.detail, msg.call.caller);
+        if (msg.call?.state) {
+          phase = msg.call.state;
+          callbacks.onCall?.(msg.call.state, msg.call.detail, msg.call.caller);
+          if (msg.call.state === "idle") {
+            pendingOffer = null;
+            cleanupPc();
+          }
+        }
         return;
       }
       if (type === "line") {
@@ -278,7 +547,12 @@ export function connectSoftphone(opts, callbacks = {}) {
         callbacks.onCall?.(msg.state, msg.detail, msg.caller);
         if (msg.state === "idle") {
           pendingOffer = null;
+          iceRestartTried = false;
+          iceRestartInFlight = false;
           cleanupPc();
+        } else if (msg.state === "incall" && iceRestartInFlight) {
+          // server confirmed update finished; wait for ICE connected for full clear
+          log("call incall during ICE restart");
         }
         return;
       }
@@ -289,9 +563,16 @@ export function connectSoftphone(opts, callbacks = {}) {
       if (type === "jsep") {
         try {
           await applyRemoteJsep(msg.jsep);
+          if (iceRestartInFlight) {
+            log("got remote jsep during ICE restart");
+          }
         } catch (err) {
           callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
         }
+        return;
+      }
+      if (type === "updatingcall") {
+        await answerUpdatingCall(msg.jsep);
         return;
       }
       if (type === "trickle") {
@@ -310,12 +591,46 @@ export function connectSoftphone(opts, callbacks = {}) {
     };
   }
 
+  function onBrowserOnline() {
+    if (!wantConnected || closed) return;
+    log("browser online");
+    if (!ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+      clearReconnectTimer();
+      reconnectAttempt = 0;
+      openWs();
+    }
+  }
+
+  function onBrowserOffline() {
+    log("browser offline");
+    callbacks.onLine?.("reconnecting", "нет сети");
+  }
+
+  function onVisibility() {
+    if (document.visibilityState !== "visible") return;
+    if (!wantConnected || closed) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      log("tab visible → ensure WSS");
+      clearReconnectTimer();
+      openWs();
+    } else {
+      send({ type: "ping" });
+    }
+  }
+
   openWs();
+  window.addEventListener("online", onBrowserOnline);
+  window.addEventListener("offline", onBrowserOffline);
+  document.addEventListener("visibilitychange", onVisibility);
 
   return {
     async dial(number) {
       if (phase !== "idle") {
         callbacks.onError?.(new Error("Уже есть звонок"));
+        return;
+      }
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        callbacks.onError?.(new Error("Нет signaling — ждём переподключения"));
         return;
       }
       try {
@@ -389,8 +704,26 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
     },
 
+    /** Manual resume after give-up / user request */
+    reconnectNow() {
+      if (closed) return;
+      wantConnected = true;
+      clearReconnectTimer();
+      reconnectAttempt = 0;
+      callbacks.onLine?.("reconnecting", "вручную");
+      openWs();
+    },
+
     destroy() {
       closed = true;
+      wantConnected = false;
+      clearReconnectTimer();
+      stopPing();
+      clearIceDisconnectTimer();
+      clearIceRestartTimer();
+      window.removeEventListener("online", onBrowserOnline);
+      window.removeEventListener("offline", onBrowserOffline);
+      document.removeEventListener("visibilitychange", onVisibility);
       try {
         if (phase !== "idle") send({ type: "hangup" });
       } catch {

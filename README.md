@@ -49,6 +49,16 @@ docker-compose up -d --build
 
 После правок UI: `docker-compose up -d --build caddy`
 
+### Реконнект (smoke)
+
+План: [`PLAN-reconnect.md`](./PLAN-reconnect.md).
+
+1. Softphone online (статус «На линии»).
+2. DevTools → Network → **Offline** на 10–30 с → снова Online.
+3. Ожидание: статус «Переподключение…», затем снова line snapshot / Registered; лог `signaling connected`.
+4. In-call (Echo `1004`), краткий Offline: лог `ICE restart` / UI «Восстановление медиа…» → снова разговор; если не вышло — hangup.
+5. Logout → **не** должен авто-подключаться.
+
 ### Входящий
 
 1. Окно A: `alice`
