@@ -4,33 +4,50 @@
 
 План: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).
 
-## Порты
+## HTTP(S) через Caddy
 
-| Сервис | URL / порт | Наружу |
-|--------|------------|--------|
-| Softphone UI (Vite) | http://localhost:3100 | да |
-| softphone-api | http://localhost:3101 | да |
-| Admin UI (Vite) | http://localhost:3120 | обычно внутрь |
-| admin-api | http://127.0.0.1:3121 | **только localhost** |
-| Monitor | http://localhost:3110 | внутрь |
-| Janus WS / media | `:8188`, RTP | signaling только для softphone-api |
+Все UI/API — за Caddy. Softphone нужен **secure context** для `getUserMedia` → используйте **HTTPS** или `localhost`.
+
+В `/etc/hosts`:
+
+```text
+127.0.0.1  service
+```
+
+| URL | Куда |
+|-----|------|
+| https://service/softphone/ | softphone (рекомендуется) |
+| http://localhost/softphone/ | softphone (тоже OK: localhost = secure) |
+| https://service/admin/ | admin UI |
+| https://service/monitor/ | monitor |
+| https://service/admin-api/… | admin-api |
+| https://service/api/… , `/ws/…` | softphone-api |
+
+`http://service/...` **не** даёт микрофон в браузере — Caddy редиректит на HTTPS.
+
+Наружу (кроме Caddy):
+
+| Порт | Зачем |
+|------|--------|
+| `:80`, `:443` | Caddy |
+| `5060`, `10000–10099/udp` | Asterisk SIP/RTP |
+| `20000–20100/udp` | Janus WebRTC media |
+
+TLS: внутренний сертификат Caddy (`tls internal`). В браузере один раз принять предупреждение о сертификате.
 
 ## Быстрый старт
 
 ```bash
+echo '127.0.0.1 service' | sudo tee -a /etc/hosts
 docker-compose up -d --build
-
-# Softphone UI
-cd web && npm install && npm run dev
-
-# Admin UI (другой терминал)
-cd admin-ui && npm install && npm run dev
 ```
 
-1. Admin: http://localhost:3120 — Basic `admin` / `admin`
-2. Seed уже есть: `alice`→1001, `bob`→1002 на `asterisk`
-3. Softphone: http://localhost:3100 — войдите как `alice` (без SIP-формы)
-4. Наберите `1000` (Playback) или `1004` (Echo)
+1. Admin: https://service/admin/ — Basic `admin` / `admin`
+2. Softphone: https://service/softphone/ — `alice`
+3. Наберите `1000` (Playback) или `1004` (Echo)
+4. Monitor: https://service/monitor/
+
+После правок UI: `docker-compose up -d --build caddy`
 
 ### Входящий
 
@@ -54,4 +71,4 @@ SIP server в админке — hostname **с точки зрения Janus** (
 ## API (кратко)
 
 - **admin-api** Basic: `CRUD /api/admin/subscribers`
-- **softphone-api**: `POST /api/session`, WSS `/ws/softphone?token=…` (без SIP полей)
+- **softphone-api**: `POST /api/session`, WSS `/ws/softphone?token=…`

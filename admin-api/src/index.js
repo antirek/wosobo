@@ -7,7 +7,10 @@ import { parseSipWrite, toPublic } from "./subscribers.js";
 
 const PORT = Number(process.env.PORT || 3121);
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/janus_softphone";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3120";
+const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3120")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 const SOFTPHONE_INTERNAL_URL =
@@ -15,7 +18,7 @@ const SOFTPHONE_INTERNAL_URL =
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
 
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(cors({ origin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN }));
 app.use(express.json());
 
 const client = new MongoClient(MONGODB_URI);

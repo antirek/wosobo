@@ -123,6 +123,11 @@ export function connectSoftphone(opts, callbacks = {}) {
 
   async function ensureMic() {
     if (localStream) return localStream;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error(
+        "Микрофон недоступен: откройте softphone по https://service/softphone/ или http://localhost/softphone/ (нужен secure context)",
+      );
+    }
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     return localStream;
   }

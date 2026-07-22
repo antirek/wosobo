@@ -1,7 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3101";
+// Same-origin via Caddy (http://service/...); override with VITE_* if needed.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 const WS_BASE =
-  import.meta.env.VITE_WS_BASE ||
-  API_BASE.replace(/^http/, "ws");
+  import.meta.env.VITE_WS_BASE ??
+  `${typeof location !== "undefined" && location.protocol === "https:" ? "wss" : "ws"}://${typeof location !== "undefined" ? location.host : "service"}`;
 
 const TOKEN_KEY = "softphone.token";
 const NICK_KEY = "softphone.nick";

@@ -8,13 +8,16 @@ import { LineManager } from "./lineManager.js";
 
 const PORT = Number(process.env.PORT || 3101);
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/janus_softphone";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3100";
+const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3100")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 const JANUS_WS_URL = process.env.JANUS_WS_URL || "ws://127.0.0.1:8188";
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 24 * 60 * 60 * 1000);
 
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(cors({ origin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN }));
 app.use(express.json());
 
 const client = new MongoClient(MONGODB_URI);

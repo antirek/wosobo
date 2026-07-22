@@ -22,9 +22,7 @@ services:
     image: canyan/janus-gateway:1.1.4
     command: ["/usr/local/bin/janus", "-F", "/usr/local/etc/janus"]
     ports:
-      - "8088:8088"
-      - "8188:8188"
-      - "7088:7088"
+      # WebRTC media (не HTTP) — браузер ходит сюда напрямую
       - "20000-20100:20000-20100/udp"
     volumes:
       - ./janus/janus.jcfg:/usr/local/etc/janus/janus.jcfg:ro
@@ -37,12 +35,10 @@ services:
 
   softphone-api:
     build: ./softphone-api
-    ports:
-      - "3101:3101"
     environment:
       PORT: "3101"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
-      CORS_ORIGIN: http://localhost:3100
+      CORS_ORIGIN: https://service,http://localhost
       JANUS_WS_URL: ws://janus:8188
       INTERNAL_TOKEN: dev-internal-token
     depends_on:
@@ -52,12 +48,10 @@ services:
 
   admin-api:
     build: ./admin-api
-    ports:
-      - "127.0.0.1:3121:3121"
     environment:
       PORT: "3121"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
-      CORS_ORIGIN: http://localhost:3120
+      CORS_ORIGIN: https://service,http://localhost
       ADMIN_USER: admin
       ADMIN_PASSWORD: admin
       SOFTPHONE_INTERNAL_URL: http://softphone-api:3101
@@ -69,8 +63,6 @@ services:
 
   monitor:
     build: ./monitor
-    ports:
-      - "3110:3110"
     environment:
       PORT: "3110"
       JANUS_ADMIN_URL: http://janus:7088/admin
@@ -79,5 +71,21 @@ services:
       - janus
     restart: unless-stopped
 
+  caddy:
+    build:
+      context: .
+      dockerfile: caddy/Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+    depends_on:
+      - softphone-api
+      - admin-api
+      - monitor
+    restart: unless-stopped
+
 volumes:
   mongo_data:
+  caddy_data:

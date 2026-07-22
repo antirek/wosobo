@@ -81,7 +81,7 @@ function renderCalls(list) {
 async function load() {
   errorEl.hidden = true;
   try {
-    const res = await fetch("/api/overview");
+    const res = await fetch("api/overview");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 

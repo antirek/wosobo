@@ -1,0 +1,66 @@
+# Front door: https://service/...  (WebRTC needs secure context)
+# /etc/hosts: 127.0.0.1 service
+# Also: http://localhost/... (localhost is a secure context on HTTP)
+{
+	local_certs
+}
+
+(app) {
+	encode gzip
+
+	# More specific than /admin* — must come first
+	handle_path /admin-api* {
+		reverse_proxy admin-api:3121
+	}
+
+	# softphone-api HTTP + WebSocket
+	handle /api/* {
+		reverse_proxy softphone-api:3101
+	}
+	handle /ws/* {
+		reverse_proxy softphone-api:3101
+	}
+
+	# Softphone UI
+	redir /softphone /softphone/ 308
+	handle /softphone* {
+		root * /srv
+		try_files {path} /softphone/index.html
+		file_server
+	}
+
+	# Admin UI
+	redir /admin /admin/ 308
+	handle /admin* {
+		root * /srv
+		try_files {path} /admin/index.html
+		file_server
+	}
+
+	# Monitor
+	redir /monitor /monitor/ 308
+	handle_path /monitor/* {
+		reverse_proxy monitor:3110
+	}
+
+	handle / {
+		respond `Janus softphone stand
+
+		/softphone/ — softphone UI
+		/admin/ — admin UI
+		/monitor/ — Janus monitor
+		/admin-api/ — admin API
+		/api/ — softphone API
+		/ws/ — softphone signaling WS
+		` 200
+	}
+}
+
+service {
+	tls internal
+	import app
+}
+
+http://localhost {
+	import app
+}
