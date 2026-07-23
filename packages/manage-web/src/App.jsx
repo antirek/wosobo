@@ -212,7 +212,7 @@ export default function App() {
 
       <section className="card">
         <h2>Список</h2>
-        <p className="hint">SIP registered / Softphone online — live из softphone-api (обновление ~3 с).</p>
+        <p className="hint">SIP registered / Softphone online — live из phone-server (обновление ~3 с).</p>
         <table>
           <thead>
             <tr>

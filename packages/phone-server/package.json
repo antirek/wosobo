@@ -1,5 +1,5 @@
 {
-  "name": "@wosobo/softphone-api",
+  "name": "@wosobo/phone-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",

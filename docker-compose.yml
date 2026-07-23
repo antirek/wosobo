@@ -33,10 +33,12 @@ services:
       - asterisk
     restart: unless-stopped
 
-  softphone-api:
-    build: ./packages/softphone-api
+  # HTTP API :3101 (internal + demo /api via Caddy), WebSocket :3102 (external /ws via Caddy)
+  phone-server:
+    build: ./packages/phone-server
     environment:
       PORT: "3101"
+      WS_PORT: "3102"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
       CORS_ORIGIN: https://service,http://localhost
       JANUS_WS_URL: ws://janus:8188
@@ -56,11 +58,11 @@ services:
       CORS_ORIGIN: https://service,http://localhost
       MANAGE_API_TOKEN: dev-manage-token
       OPENAPI_SERVER_URL: /manage-api
-      SOFTPHONE_INTERNAL_URL: http://softphone-api:3101
+      PHONE_SERVER_URL: http://phone-server:3101
       INTERNAL_TOKEN: dev-internal-token
     depends_on:
       - mongo
-      - softphone-api
+      - phone-server
     restart: unless-stopped
 
   monitor:
@@ -83,7 +85,7 @@ services:
     volumes:
       - caddy_data:/data
     depends_on:
-      - softphone-api
+      - phone-server
       - manage-api
       - monitor
     restart: unless-stopped

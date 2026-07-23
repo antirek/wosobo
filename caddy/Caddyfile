@@ -13,15 +13,16 @@
 		reverse_proxy manage-api:3121
 	}
 
-	# Частая ошибка: /api/manage/* уходит в softphone-api → редирект на manage-api
+	# Частая ошибка: /api/manage/* → manage-api
 	redir /api/manage* /manage-api{uri} 308
 
-	# softphone-api HTTP + WebSocket
+	# phone-server: HTTP API (demo session + health)
 	handle /api/* {
-		reverse_proxy softphone-api:3101
+		reverse_proxy phone-server:3101
 	}
+	# phone-server: WebSocket signaling (external)
 	handle /ws/* {
-		reverse_proxy softphone-api:3101
+		reverse_proxy phone-server:3102
 	}
 
 	# Softphone UI
@@ -53,8 +54,8 @@
 		/manage/ — manage UI
 		/monitor/ — Janus monitor
 		/manage-api/ — manage API
-		/api/ — softphone API
-		/ws/ — softphone signaling WS
+		/api/ — phone-server HTTP (session/health)
+		/ws/ — phone-server WebSocket
 		` 200
 	}
 }

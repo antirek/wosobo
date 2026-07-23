@@ -9,9 +9,9 @@ WebRTC-клиент можно **встроить в любое приложен
 | API | Зачем |
 |-----|--------|
 | **manage-api** | учётные данные абонентов (ник ↔ SIP на PBX), опции (enabled, absent announce, …) |
-| **softphone-api** | сессии и звонки: REGISTER/линия, dial / accept / hangup, WSS-сигналинг, медиа через Janus |
+| **phone-server** | REGISTER/линия; **HTTP API** (session/internal) + **WebSocket** сигналинг; медиа через Janus |
 
-Браузерный softphone на стенде — пример такого клиента: логинится по **нику**, получает short-lived token, дальше только softphone-api. SIP password в браузер **не** попадает.
+Браузерный softphone на стенде — пример клиента: логинится по **нику**, получает short-lived token, дальше WSS к phone-server. SIP password в браузер **не** попадает.
 
 Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md), [`PLAN-manage-openapi.md`](./PLAN-manage-openapi.md), [`PLAN-softphone-embed.md`](./PLAN-softphone-embed.md).
 
@@ -32,7 +32,8 @@ WebRTC-клиент можно **встроить в любое приложен
 | https://service/manage/ | manage UI (поверх manage-api) |
 | https://service/monitor/ | monitor |
 | https://service/manage-api/… | manage-api |
-| https://service/api/… , `/ws/…` | softphone-api |
+| https://service/api/… | phone-server HTTP (session/health; demo) |
+| https://service/ws/… | phone-server WebSocket (сигналинг) |
 
 `http://service/...` **не** даёт микрофон в браузере — Caddy редиректит на HTTPS.
 
@@ -77,7 +78,7 @@ docker-compose up -d --build
 2. Окно B: `bob` → звонок на `1001`
 3. На A: Принять / Отклонить
 
-После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Manage включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/softphone-api/media/absent.wav`, затем hangup.
+После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Manage включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/phone-server/media/absent.wav`, затем hangup.
 
 ### Анонс «абонент отсутствует»
 
@@ -102,4 +103,4 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 ## API (кратко)
 
 - **manage-api** — учётные данные и опции: Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, docs `/api/manage/docs`
-- **softphone-api** — звонки: `POST /api/session` (ник → token), WSS `/ws/softphone?token=…` (dial / accept / hangup / trickle / update)
+- **phone-server** — HTTP `:3101` (`POST /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…`)

@@ -8,6 +8,7 @@ import { LineManager } from "./lineManager.js";
 import { createAbsentAnnounceService } from "./absent/index.js";
 
 const PORT = Number(process.env.PORT || 3101);
+const WS_PORT = Number(process.env.WS_PORT || 3102);
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/janus_softphone";
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3100")
   .split(",")
@@ -112,7 +113,7 @@ const lineManager = new LineManager({
 });
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "softphone-api" });
+  res.json({ ok: true, service: "phone-server" });
 });
 
 app.post("/api/session", async (req, res) => {
@@ -169,8 +170,12 @@ app.post("/internal/lines/reconcile", requireInternal, async (req, res) => {
   }
 });
 
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws/softphone" });
+const apiServer = http.createServer(app);
+const wsServer = http.createServer((_req, res) => {
+  res.writeHead(426, { "Content-Type": "text/plain" });
+  res.end("Upgrade Required — WebSocket only");
+});
+const wss = new WebSocketServer({ server: wsServer, path: "/ws/softphone" });
 
 wss.on("connection", async (ws, req) => {
   try {
@@ -240,15 +245,23 @@ wss.on("connection", async (ws, req) => {
   }
 });
 
-server.listen(PORT, async () => {
-  console.log(`softphone-api listening on :${PORT}`);
-  console.log(`Janus WS: ${JANUS_WS_URL}`);
-  console.log(`Session TTL: ${SESSION_TTL_MS}ms (Mongo softphone_sessions)`);
-  console.log(`Absent announce file: ${ABSENT_ANNOUNCE_FILE}`);
+async function bootLines() {
   try {
     await lineManager.boot();
   } catch (err) {
     console.error("boot error", err);
   }
   lineManager.startPolling(3000);
+}
+
+apiServer.listen(PORT, () => {
+  console.log(`phone-server HTTP (internal API) on :${PORT}`);
+});
+
+wsServer.listen(WS_PORT, async () => {
+  console.log(`phone-server WebSocket (external) on :${WS_PORT} path /ws/softphone`);
+  console.log(`Janus WS: ${JANUS_WS_URL}`);
+  console.log(`Session TTL: ${SESSION_TTL_MS}ms (Mongo softphone_sessions)`);
+  console.log(`Absent announce file: ${ABSENT_ANNOUNCE_FILE}`);
+  await bootLines();
 });

@@ -7,6 +7,7 @@ COPY src ./src
 COPY media ./media
 
 ENV PORT=3101
+ENV WS_PORT=3102
 ENV ABSENT_ANNOUNCE_FILE=/app/media/absent.wav
-EXPOSE 3101
+EXPOSE 3101 3102
 CMD ["node", "src/index.js"]

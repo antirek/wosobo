@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:softphone-api": "npm run dev -w @wosobo/softphone-api",
+    "dev:phone-server": "npm run dev -w @wosobo/phone-server",
     "dev:softphone-web": "npm run dev -w @wosobo/softphone-web",
     "dev:manage-api": "npm run dev -w @wosobo/manage-api",
     "dev:manage-web": "npm run dev -w @wosobo/manage-web",

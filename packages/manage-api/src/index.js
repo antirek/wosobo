@@ -9,8 +9,10 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3120")
   .map((s) => s.trim())
   .filter(Boolean);
 const MANAGE_API_TOKEN = process.env.MANAGE_API_TOKEN || "";
-const SOFTPHONE_INTERNAL_URL =
-  process.env.SOFTPHONE_INTERNAL_URL || "http://127.0.0.1:3101";
+const PHONE_SERVER_URL =
+  process.env.PHONE_SERVER_URL ||
+  process.env.SOFTPHONE_INTERNAL_URL ||
+  "http://127.0.0.1:3101";
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
 
 if (!MANAGE_API_TOKEN) {
@@ -29,7 +31,7 @@ const { app, softphone } = createApp({
   manageApiToken: MANAGE_API_TOKEN,
   corsOrigin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN,
   subscribers,
-  softphoneInternalUrl: SOFTPHONE_INTERNAL_URL,
+  softphoneInternalUrl: PHONE_SERVER_URL,
   internalToken: INTERNAL_TOKEN,
 });
 
