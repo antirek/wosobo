@@ -24,3 +24,22 @@ export function normalizeNick(nick) {
     .trim()
     .toLowerCase();
 }
+
+/**
+ * Mint softphone session for nick (24h default).
+ * @param {string} apiToken
+ * @param {string} nick
+ * @param {{ ttlSec?: number }} [opts]
+ */
+export async function mintSession(apiToken, nick, opts = {}) {
+  const body = {};
+  if (opts.ttlSec != null) body.ttlSec = opts.ttlSec;
+  return manageFetch(
+    apiToken,
+    `/api/manage/subscribers/${encodeURIComponent(normalizeNick(nick))}/session`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}

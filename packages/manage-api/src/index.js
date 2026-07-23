@@ -24,15 +24,20 @@ const client = new MongoClient(MONGODB_URI);
 await client.connect();
 const db = client.db();
 const subscribers = db.collection("subscribers");
+const sessions = db.collection("softphone_sessions");
 await subscribers.createIndex({ nick: 1 }, { unique: true });
+await sessions.createIndex({ token: 1 }, { unique: true });
+await sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 await seedSubscribers(subscribers);
 
 const { app, softphone } = createApp({
   manageApiToken: MANAGE_API_TOKEN,
   corsOrigin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN,
   subscribers,
+  sessions,
   softphoneInternalUrl: PHONE_SERVER_URL,
   internalToken: INTERNAL_TOKEN,
+  sessionTtlSec: 24 * 60 * 60,
 });
 
 app.listen(PORT, () => {

@@ -4,6 +4,7 @@ import { createApiTokenMiddleware } from "./auth/apiToken.js";
 import { createDocsRouter } from "./routes/docs.js";
 import { createHealthRouter } from "./routes/health.js";
 import { createSubscribersRouter } from "./routes/subscribers.js";
+import { createSessionRouter } from "./routes/session.js";
 import { createSoftphoneInternal } from "./services/softphoneInternal.js";
 
 /**
@@ -11,8 +12,10 @@ import { createSoftphoneInternal } from "./services/softphoneInternal.js";
  *   manageApiToken: string,
  *   corsOrigin: string | string[],
  *   subscribers: import('mongodb').Collection,
+ *   sessions: import('mongodb').Collection,
  *   softphoneInternalUrl: string,
  *   internalToken: string,
+ *   sessionTtlSec?: number,
  * }} opts
  */
 export function createApp(opts) {
@@ -39,6 +42,14 @@ export function createApp(opts) {
       subscribers: opts.subscribers,
       softphone,
       requireAuth,
+    }),
+  );
+  app.use(
+    createSessionRouter({
+      subscribers: opts.subscribers,
+      sessions: opts.sessions,
+      requireAuth,
+      defaultTtlSec: opts.sessionTtlSec,
     }),
   );
 

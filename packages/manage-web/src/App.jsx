@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { manageFetch, normalizeNick } from "./api.js";
+import { manageFetch, mintSession, normalizeNick } from "./api.js";
 
 const AUTH_KEY = "manage.apiToken";
 
@@ -21,6 +21,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
+  /** @type {[{ nick: string, token: string, expiresAt: number } | null, Function]} */
+  const [minted, setMinted] = useState(null);
+  const [mintBusyNick, setMintBusyNick] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async (token) => {
     const data = await manageFetch(token, "/api/manage/subscribers");
@@ -71,6 +75,35 @@ export default function App() {
     setItems([]);
     setForm(EMPTY_FORM);
     setEditing(null);
+    setMinted(null);
+  }
+
+  async function onMintToken(item) {
+    setError("");
+    setCopied(false);
+    setMintBusyNick(item.nick);
+    try {
+      const data = await mintSession(apiToken, item.nick);
+      setMinted({
+        nick: data.nick,
+        token: data.token,
+        expiresAt: data.expiresAt,
+      });
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setMintBusyNick("");
+    }
+  }
+
+  async function copyMintedToken() {
+    if (!minted?.token) return;
+    try {
+      await navigator.clipboard.writeText(minted.token);
+      setCopied(true);
+    } catch {
+      setError("Не удалось скопировать token");
+    }
   }
 
   function startEdit(item) {
@@ -210,6 +243,32 @@ export default function App() {
         </section>
       ) : null}
 
+      {minted ? (
+        <section className="card mint-card">
+          <h2>Session token — {minted.nick}</h2>
+          <p className="hint">
+            TTL до {new Date(minted.expiresAt).toLocaleString()}. Вставьте в Softphone (ник + token).
+          </p>
+          <code className="token-box">{minted.token}</code>
+          <div className="row">
+            <button type="button" onClick={copyMintedToken}>
+              {copied ? "Скопировано" : "Копировать token"}
+            </button>
+            <a
+              className="secondary"
+              href={`/softphone/`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Открыть Softphone
+            </a>
+            <button type="button" className="secondary" onClick={() => setMinted(null)}>
+              Закрыть
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="card">
         <h2>Список</h2>
         <p className="hint">SIP registered / Softphone online — live из phone-server (обновление ~3 с).</p>
@@ -229,6 +288,7 @@ export default function App() {
               const rt = item.runtime || {};
               const sipOk = Boolean(rt.sipRegistered);
               const uiOnline = Boolean(rt.softphoneOnline);
+              const canMint = item.enabled && item.sip?.passwordSet;
               return (
                 <tr key={item.nick}>
                   <td>
@@ -280,6 +340,15 @@ export default function App() {
                   </td>
                   <td>
                     <div className="row">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => onMintToken(item)}
+                        disabled={busy || !canMint || mintBusyNick === item.nick}
+                        title={canMint ? "Mint softphone session" : "Нужны enabled + SIP password"}
+                      >
+                        {mintBusyNick === item.nick ? "…" : "Token"}
+                      </button>
                       <button type="button" className="secondary" onClick={() => startEdit(item)} disabled={busy}>
                         Изменить
                       </button>

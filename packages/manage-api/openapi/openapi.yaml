@@ -144,6 +144,38 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/manage/subscribers/{nick}/session:
+    parameters:
+      - $ref: "#/components/parameters/Nick"
+    post:
+      tags: [subscribers]
+      operationId: createSubscriberSession
+      summary: Выдать softphone session token (mint)
+      description: |
+        Доверенный backend. Пишет в Mongo `softphone_sessions`.
+        Default TTL 24h. Клиент затем открывает WSS phone-server с token+nick.
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionCreate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     apiToken:
@@ -287,3 +319,24 @@ components:
           type: boolean
         sip:
           $ref: "#/components/schemas/SipWrite"
+    SessionCreate:
+      type: object
+      properties:
+        ttlSec:
+          type: integer
+          minimum: 1
+          maximum: 604800
+          description: TTL в секундах; default 86400 (24h), max 7d
+          example: 86400
+    SessionCreated:
+      type: object
+      required: [token, nick, expiresAt]
+      properties:
+        token:
+          type: string
+        nick:
+          type: string
+        expiresAt:
+          type: integer
+          description: Unix ms
+          example: 1720000000000

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   clearStoredSession,
-  createSession,
   destroySession,
   getStoredSession,
-  normalizeNick,
+  storeSession,
 } from "./api.js";
 import { createRingtone } from "./ringtone.js";
 import { connectSoftphone } from "./softphoneClient.js";
@@ -31,6 +30,7 @@ const CALL_LABELS = {
 export default function App() {
   const stored = getStoredSession();
   const [nickInput, setNickInput] = useState(stored?.nick || "");
+  const [tokenInput, setTokenInput] = useState(stored?.token || "");
   const [nick, setNick] = useState(stored?.nick || "");
   const [token, setToken] = useState(stored?.token || "");
   const [status, setStatus] = useState("offline");
@@ -45,6 +45,8 @@ export default function App() {
   const sessionRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const ringtoneRef = useRef(null);
+
+  const connected = Boolean(nick && token);
 
   const statusText = useMemo(() => {
     const base = STATUS_LABELS[status] || status;
@@ -64,7 +66,7 @@ export default function App() {
     callState === "reconnecting-media";
   const canDial = status === "registered" && callState === "idle" && !busy;
   const showReconnect =
-    Boolean(token) && (status === "offline" || status === "error" || status === "reconnecting");
+    connected && (status === "offline" || status === "error" || status === "reconnecting");
 
   function appendLog(line) {
     const stamp = new Date().toLocaleTimeString();
@@ -87,21 +89,12 @@ export default function App() {
     setMuted(false);
   }
 
-  function startSoftphone(sessionToken) {
+  function startSoftphone(sessionToken, sessionNick) {
     stopSoftphone();
     sessionRef.current = connectSoftphone(
       {
         token: sessionToken,
-        async refreshSession() {
-          const stored = getStoredSession();
-          const useNick = stored?.nick || nick;
-          if (!useNick) throw new Error("нет ника для refresh");
-          appendLog(`refresh session ${useNick}`);
-          const data = await createSession(useNick);
-          setToken(data.token);
-          setNick(data.nick);
-          return data.token;
-        },
+        nick: sessionNick,
       },
       {
         onLog: appendLog,
@@ -143,7 +136,6 @@ export default function App() {
                 .then(() => appendLog("audio.play ok"))
                 .catch((err) => appendLog(`audio.play: ${err.message || err}`));
             tryPlay();
-            // после первых RTP track снимает muted — перезапускаем play
             for (const t of stream.getAudioTracks()) {
               t.addEventListener(
                 "unmute",
@@ -161,9 +153,10 @@ export default function App() {
         },
         onToken(nextToken) {
           setToken(nextToken);
+          setTokenInput(nextToken);
         },
         onAuthLost() {
-          appendLog("сессия истекла");
+          appendLog("сессия истекла — mint новый token");
           stopSoftphone();
           clearStoredSession();
           setNick("");
@@ -194,29 +187,25 @@ export default function App() {
 
   useEffect(() => {
     if (token && nick) {
-      startSoftphone(token);
+      startSoftphone(token, nick);
     }
     return () => stopSoftphone();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function enterWithNick(rawNick) {
-    const value = normalizeNick(rawNick);
-    if (!value) {
-      setError("Введите ник");
-      return;
-    }
+  function enterWithSession(rawNick, rawToken) {
     setError("");
     setBusy(true);
     stopSoftphone();
     try {
-      const data = await createSession(value);
+      const data = storeSession({ nick: rawNick, token: rawToken });
       setNick(data.nick);
       setNickInput(data.nick);
       setToken(data.token);
+      setTokenInput(data.token);
       setStatus("starting");
       appendLog(`Сессия ${data.nick}`);
-      startSoftphone(data.token);
+      startSoftphone(data.token, data.nick);
     } catch (err) {
       setError(err.message || String(err));
       clearStoredSession();
@@ -231,7 +220,6 @@ export default function App() {
     stopSoftphone();
     await destroySession(token);
     setNick("");
-    setNickInput("");
     setToken("");
     setStatus("offline");
     setStatusDetail("");
@@ -280,60 +268,53 @@ export default function App() {
     );
   }
 
-  if (!nick || !token) {
-    return (
-      <div className="page">
-        <header className="header">
-          <h1>Softphone</h1>
-          <p className="lede">Только ник. SIP-учётки задаются в Admin.</p>
-        </header>
-
-        <form
-          className="card"
-          onSubmit={(e) => {
-            e.preventDefault();
-            enterWithNick(nickInput);
-          }}
-        >
-          <label>
-            Ник
-            <input
-              autoFocus
-              value={nickInput}
-              onChange={(e) => setNickInput(e.target.value)}
-              placeholder="alice"
-              disabled={busy}
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={busy}>
-            Войти
-          </button>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div className="page">
       <header className="header">
         <h1>Softphone</h1>
-        <p className="lede">
-          Пользователь: <strong>{nick}</strong>
-        </p>
-        <button type="button" className="linkish" onClick={onLogout}>
-          Выйти
-        </button>
+        <p className="lede">Token из Manage → Token у ника. SIP — в Manage.</p>
       </header>
 
-      <section className="card status-card">
-        <div className={`pill status-${status}`}>{statusText}</div>
-        {showReconnect ? (
-          <button type="button" className="secondary" onClick={onReconnect} disabled={busy}>
-            Подключить снова
+      <form
+        className="card session-bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          enterWithSession(nickInput, tokenInput);
+        }}
+      >
+        <label>
+          Ник
+          <input
+            autoFocus={!connected}
+            value={nickInput}
+            onChange={(e) => setNickInput(e.target.value)}
+            placeholder="alice"
+            disabled={busy}
+            autoComplete="username"
+          />
+        </label>
+        <label>
+          Session token
+          <input
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            placeholder="из Manage → Token"
+            disabled={busy}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="session-actions">
+          <button type="submit" disabled={busy || !nickInput.trim() || !tokenInput.trim()}>
+            {connected ? "Переподключить" : "Подключить"}
           </button>
-        ) : null}
-      </section>
+          {connected ? (
+            <button type="button" className="secondary" onClick={onLogout} disabled={busy}>
+              Выйти
+            </button>
+          ) : null}
+        </div>
+      </form>
 
       {error ? (
         <section className="card">
@@ -341,68 +322,93 @@ export default function App() {
         </section>
       ) : null}
 
-      {isIncoming ? (
-        <section className="card incoming-card">
-          <h2>Входящий звонок</h2>
-          <div className="pill call-incoming">{callText}</div>
-          <p className="hint">Разрешите микрофон при ответе.</p>
-          <div className="incoming-actions">
-            <button type="button" className="success" onClick={onAccept}>
-              Принять
-            </button>
-            <button type="button" className="danger" onClick={onDecline}>
-              Отклонить
-            </button>
-          </div>
-        </section>
-      ) : null}
+      {connected ? (
+        <>
+          <section className="card status-card">
+            <div className={`pill status-${status}`}>{statusText}</div>
+            {showReconnect ? (
+              <button type="button" className="secondary" onClick={onReconnect} disabled={busy}>
+                Подключить снова
+              </button>
+            ) : null}
+          </section>
 
-      <section className="card">
-        <h2>Звонок</h2>
-        <p className="hint">
-          Тест: <code>1000</code> Playback, <code>1004</code> Echo, <code>1002</code> → bob.
-        </p>
-        <div className={`pill call-${callState}`}>{callText}</div>
+          {isIncoming ? (
+            <section className="card incoming-card">
+              <h2>Входящий звонок</h2>
+              <div className="pill call-incoming">{callText}</div>
+              <p className="hint">Разрешите микрофон при ответе.</p>
+              <div className="incoming-actions">
+                <button type="button" className="success" onClick={onAccept}>
+                  Принять
+                </button>
+                <button type="button" className="danger" onClick={onDecline}>
+                  Отклонить
+                </button>
+              </div>
+            </section>
+          ) : null}
 
-        <form className="dial-row" onSubmit={onCall}>
-          <label className="dial-field">
-            Номер
-            <input
-              value={dialNumber}
-              onChange={(e) => setDialNumber(e.target.value)}
-              placeholder="1000"
-              disabled={!canDial}
+          <section className="card">
+            <h2>Звонок</h2>
+            <p className="hint">
+              Тест: <code>1000</code> Playback, <code>1004</code> Echo, <code>1002</code> → bob.
+            </p>
+            <div className={`pill call-${callState}`}>{callText}</div>
+
+            <form className="dial-row" onSubmit={onCall}>
+              <label className="dial-field">
+                Номер
+                <input
+                  value={dialNumber}
+                  onChange={(e) => setDialNumber(e.target.value)}
+                  placeholder="1000"
+                  disabled={!canDial}
+                />
+              </label>
+              {!inCall ? (
+                <button type="submit" disabled={!canDial || !dialNumber.trim()}>
+                  Позвонить
+                </button>
+              ) : (
+                <button type="button" className="danger" onClick={onHangup}>
+                  Сбросить
+                </button>
+              )}
+            </form>
+
+            {(callState === "incall" ||
+              callState === "outgoing" ||
+              callState === "reconnecting-media") && (
+              <button type="button" className="secondary" onClick={onToggleMute}>
+                {muted ? "Включить микрофон" : "Mute"}
+              </button>
+            )}
+
+            <audio
+              ref={remoteAudioRef}
+              autoPlay
+              playsInline
+              controls
+              style={{ width: "100%", marginTop: "0.75rem" }}
             />
-          </label>
-          {!inCall ? (
-            <button type="submit" disabled={!canDial || !dialNumber.trim()}>
-              Позвонить
-            </button>
-          ) : (
-            <button type="button" className="danger" onClick={onHangup}>
-              Сбросить
-            </button>
-          )}
-        </form>
+          </section>
 
-        {(callState === "incall" || callState === "outgoing" || callState === "reconnecting-media") && (
-          <button type="button" className="secondary" onClick={onToggleMute}>
-            {muted ? "Включить микрофон" : "Mute"}
-          </button>
-        )}
-
-        <audio ref={remoteAudioRef} autoPlay playsInline controls style={{ width: "100%", marginTop: "0.75rem" }} />
-      </section>
-
-      <section className="card">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0 }}>Лог</h2>
-          <button type="button" className="secondary" onClick={onCopyLog} disabled={!logLines.length}>
-            Копировать
-          </button>
-        </div>
-        <pre className="log">{logLines.length ? logLines.join("\n") : "Пока пусто"}</pre>
-      </section>
+          <section className="card">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0 }}>Лог</h2>
+              <button type="button" className="secondary" onClick={onCopyLog} disabled={!logLines.length}>
+                Копировать
+              </button>
+            </div>
+            <pre className="log">{logLines.length ? logLines.join("\n") : "Пока пусто"}</pre>
+          </section>
+        </>
+      ) : (
+        <section className="card">
+          <p className="hint">Введите ник и token (Manage → Token у абонента), затем Подключить.</p>
+        </section>
+      )}
     </div>
   );
 }

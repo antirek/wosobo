@@ -11,7 +11,7 @@ WebRTC-клиент можно **встроить в любое приложен
 | **manage-api** | учётные данные абонентов (ник ↔ SIP на PBX), опции (enabled, absent announce, …) |
 | **phone-server** | REGISTER/линия; **HTTP API** (session/internal) + **WebSocket** сигналинг; медиа через Janus |
 
-Браузерный softphone на стенде — пример клиента: логинится по **нику**, получает short-lived token, дальше WSS к phone-server. SIP password в браузер **не** попадает.
+Браузерный softphone на стенде — пример клиента: получает short-lived token через **manage mint**, дальше WSS к phone-server. SIP password в браузер **не** попадает.
 
 Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md), [`PLAN-manage-openapi.md`](./PLAN-manage-openapi.md), [`PLAN-softphone-embed.md`](./PLAN-softphone-embed.md).
 
@@ -32,7 +32,7 @@ WebRTC-клиент можно **встроить в любое приложен
 | https://service/manage/ | manage UI (поверх manage-api) |
 | https://service/monitor/ | monitor |
 | https://service/manage-api/… | manage-api |
-| https://service/api/… | phone-server HTTP (session/health; demo) |
+| https://service/api/… | phone-server HTTP (health; DELETE session) |
 | https://service/ws/… | phone-server WebSocket (сигналинг) |
 
 `http://service/...` **не** даёт микрофон в браузере — Caddy редиректит на HTTPS.
@@ -55,10 +55,20 @@ docker-compose up -d --build
 ```
 
 1. Manage: https://service/manage/ — API token `dev-manage-token`
-2. Softphone: https://service/softphone/ — `alice`
-3. Наберите `1000` (Playback) или `1004` (Echo)
-4. Monitor: https://service/monitor/
-5. OpenAPI: https://service/manage-api/api/manage/docs (Authorize → Bearer `dev-manage-token`)
+2. Mint session (или OpenAPI Try it out):
+
+```bash
+curl -sk -X POST \
+  -H "Authorization: Bearer dev-manage-token" \
+  -H "Content-Type: application/json" \
+  https://service/manage-api/api/manage/subscribers/alice/session \
+  -d '{"ttlSec":86400}'
+```
+
+3. Softphone: https://service/softphone/ — ник + token сверху (или Manage → **Token** у ника → копировать)
+4. Наберите `1000` (Playback) или `1004` (Echo)
+5. Monitor: https://service/monitor/
+6. OpenAPI: https://service/manage-api/api/manage/docs (Authorize → Bearer `dev-manage-token`)
 
 После правок UI: `docker-compose up -d --build caddy`
 
@@ -102,5 +112,16 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 
 ## API (кратко)
 
-- **manage-api** — учётные данные и опции: Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, docs `/api/manage/docs`
-- **phone-server** — HTTP `:3101` (`POST /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…`)
+- **manage-api** — учётные данные и опции: Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, mint session `POST /api/manage/subscribers/{nick}/session`, docs `/api/manage/docs`
+- **phone-server** — HTTP `:3101` (`DELETE /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…&nick=…`)
+
+### Mint session (host backend)
+
+```bash
+curl -sk -X POST \
+  -H "Authorization: Bearer dev-manage-token" \
+  -H "Content-Type: application/json" \
+  https://service/manage-api/api/manage/subscribers/alice/session \
+  -d '{"ttlSec":86400}'
+# → { "token", "nick", "expiresAt" } — затем softphone / WSS с token+nick
+```

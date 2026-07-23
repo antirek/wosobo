@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import cors from "cors";
 import express from "express";
 import http from "http";
@@ -16,7 +15,6 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3100")
   .filter(Boolean);
 const JANUS_WS_URL = process.env.JANUS_WS_URL || "ws://127.0.0.1:8188";
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 24 * 60 * 60 * 1000);
 const ABSENT_ANNOUNCE_FILE = process.env.ABSENT_ANNOUNCE_FILE || "/app/media/absent.wav";
 const ABSENT_ANNOUNCE_MAX_SEC = Number(process.env.ABSENT_ANNOUNCE_MAX_SEC || 30);
 
@@ -38,14 +36,6 @@ function normalizeNick(nick) {
   return String(nick || "")
     .trim()
     .toLowerCase();
-}
-
-function isValidNick(nick) {
-  return /^[a-z0-9][a-z0-9._-]{0,31}$/.test(nick);
-}
-
-function createToken() {
-  return randomBytes(24).toString("hex");
 }
 
 /**
@@ -116,31 +106,7 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "phone-server" });
 });
 
-app.post("/api/session", async (req, res) => {
-  try {
-    const nick = normalizeNick(req.body?.nick);
-    if (!isValidNick(nick)) {
-      return res.status(400).json({ error: "Некорректный ник" });
-    }
-    const doc = await subscribers.findOne({ nick });
-    if (!doc || !doc.enabled) {
-      return res.status(404).json({ error: "Абонент не найден или отключён", nick });
-    }
-    if (!doc.sip?.password) {
-      return res.status(404).json({ error: "Абонент без SIP-привязки", nick });
-    }
-
-    const token = createToken();
-    const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + SESSION_TTL_MS);
-    await sessionsCol.insertOne({ token, nick, createdAt, expiresAt });
-    return res.json({ token, nick, expiresAt: expiresAt.getTime() });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err.message || String(err) });
-  }
-});
-
+/** Revoke session token (logout). Mint only via manage-api. */
 app.delete("/api/session", async (req, res) => {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -181,9 +147,32 @@ wss.on("connection", async (ws, req) => {
   try {
     const url = new URL(req.url || "", "http://localhost");
     const token = url.searchParams.get("token") || "";
+    const nickParam = normalizeNick(url.searchParams.get("nick") || "");
+    if (!token || !nickParam) {
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          code: "unauthorized",
+          message: "Нужны token и nick",
+        }),
+      );
+      ws.close(4001, "unauthorized");
+      return;
+    }
     const session = await getSession(token);
     if (!session) {
       ws.send(JSON.stringify({ type: "error", code: "unauthorized", message: "Нет сессии" }));
+      ws.close(4001, "unauthorized");
+      return;
+    }
+    if (session.nick !== nickParam) {
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          code: "unauthorized",
+          message: "nick не совпадает с сессией",
+        }),
+      );
       ws.close(4001, "unauthorized");
       return;
     }
@@ -261,7 +250,7 @@ apiServer.listen(PORT, () => {
 wsServer.listen(WS_PORT, async () => {
   console.log(`phone-server WebSocket (external) on :${WS_PORT} path /ws/softphone`);
   console.log(`Janus WS: ${JANUS_WS_URL}`);
-  console.log(`Session TTL: ${SESSION_TTL_MS}ms (Mongo softphone_sessions)`);
+  console.log(`Sessions: Mongo softphone_sessions (mint via manage-api)`);
   console.log(`Absent announce file: ${ABSENT_ANNOUNCE_FILE}`);
   await bootLines();
 });

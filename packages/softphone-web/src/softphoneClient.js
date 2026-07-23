@@ -35,6 +35,7 @@ function jitteredDelay(ms) {
  *
  * @param {{
  *   token: string,
+ *   nick: string,
  *   refreshSession?: () => Promise<string>,
  * }} opts
  * @param {{
@@ -51,6 +52,7 @@ function jitteredDelay(ms) {
 export function connectSoftphone(opts, callbacks = {}) {
   const log = (line) => callbacks.onLog?.(line);
   let currentToken = opts.token;
+  let currentNick = opts.nick;
   /** @type {WebSocket | null} */
   let ws = null;
   let wantConnected = true;
@@ -506,7 +508,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
     }
 
-    const url = softphoneWsUrl(currentToken);
+    const url = softphoneWsUrl(currentToken, currentNick);
     log(`WS ${url.replace(/token=[^&]+/, "token=…")}`);
     const socket = new WebSocket(url);
     ws = socket;

@@ -25,19 +25,14 @@ export function clearStoredSession() {
   sessionStorage.removeItem(NICK_KEY);
 }
 
-export async function createSession(nick) {
-  const res = await fetch(`${API_BASE}/api/session`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nick }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `Ошибка API ${res.status}`);
-  }
-  sessionStorage.setItem(TOKEN_KEY, data.token);
-  sessionStorage.setItem(NICK_KEY, data.nick);
-  return data;
+/** Store mint result from manage-api (no public /api/session). */
+export function storeSession({ token, nick }) {
+  const n = normalizeNick(nick);
+  const t = String(token || "").trim();
+  if (!t || !n) throw new Error("Нужны token и nick");
+  sessionStorage.setItem(TOKEN_KEY, t);
+  sessionStorage.setItem(NICK_KEY, n);
+  return { token: t, nick: n };
 }
 
 export async function destroySession(token) {
@@ -53,6 +48,10 @@ export async function destroySession(token) {
   clearStoredSession();
 }
 
-export function softphoneWsUrl(token) {
-  return `${WS_BASE}/ws/softphone?token=${encodeURIComponent(token)}`;
+export function softphoneWsUrl(token, nick) {
+  const q = new URLSearchParams({
+    token: String(token || ""),
+    nick: String(nick || ""),
+  });
+  return `${WS_BASE}/ws/softphone?${q}`;
 }
