@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { manageFetch, normalizeNick } from "./api.js";
 
-const AUTH_KEY = "manage.basic";
+const AUTH_KEY = "manage.apiToken";
 
 const EMPTY_FORM = {
   nick: "",
@@ -14,8 +14,7 @@ const EMPTY_FORM = {
 };
 
 export default function App() {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
+  const [apiToken, setApiToken] = useState("");
   const [authed, setAuthed] = useState(false);
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
@@ -23,33 +22,29 @@ export default function App() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
 
-  const load = useCallback(async (u, p) => {
-    const data = await manageFetch(u, p, "/api/manage/subscribers");
+  const load = useCallback(async (token) => {
+    const data = await manageFetch(token, "/api/manage/subscribers");
     setItems(data.items || []);
   }, []);
 
   useEffect(() => {
-    if (!authed || !user) return undefined;
+    if (!authed || !apiToken) return undefined;
     const id = setInterval(() => {
-      load(user, pass).catch(() => {});
+      load(apiToken).catch(() => {});
     }, 3000);
     return () => clearInterval(id);
-  }, [authed, user, pass, load]);
+  }, [authed, apiToken, load]);
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(AUTH_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed?.user && parsed?.pass) {
-        setUser(parsed.user);
-        setPass(parsed.pass);
-        setBusy(true);
-        load(parsed.user, parsed.pass)
-          .then(() => setAuthed(true))
-          .catch(() => sessionStorage.removeItem(AUTH_KEY))
-          .finally(() => setBusy(false));
-      }
+      const stored = sessionStorage.getItem(AUTH_KEY);
+      if (!stored) return;
+      setApiToken(stored);
+      setBusy(true);
+      load(stored)
+        .then(() => setAuthed(true))
+        .catch(() => sessionStorage.removeItem(AUTH_KEY))
+        .finally(() => setBusy(false));
     } catch {
       /* ignore */
     }
@@ -60,8 +55,8 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
-      await load(user, pass);
-      sessionStorage.setItem(AUTH_KEY, JSON.stringify({ user, pass }));
+      await load(apiToken);
+      sessionStorage.setItem(AUTH_KEY, apiToken);
       setAuthed(true);
     } catch (err) {
       setError(err.message || String(err));
@@ -117,11 +112,11 @@ export default function App() {
       if (!editing && !form.password) {
         throw new Error("Для нового абонента нужен SIP password");
       }
-      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(nick)}`, {
+      await manageFetch(apiToken, `/api/manage/subscribers/${encodeURIComponent(nick)}`, {
         method: "PUT",
         body: JSON.stringify(body),
       });
-      await load(user, pass);
+      await load(apiToken);
       startCreate();
     } catch (err) {
       setError(err.message || String(err));
@@ -134,11 +129,11 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
-      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
+      await manageFetch(apiToken, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
         method: "PATCH",
         body: JSON.stringify({ enabled: !item.enabled }),
       });
-      await load(user, pass);
+      await load(apiToken);
     } catch (err) {
       setError(err.message || String(err));
     } finally {
@@ -151,10 +146,10 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
-      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
+      await manageFetch(apiToken, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
         method: "DELETE",
       });
-      await load(user, pass);
+      await load(apiToken);
       if (editing === item.nick) startCreate();
     } catch (err) {
       setError(err.message || String(err));
@@ -168,24 +163,22 @@ export default function App() {
       <div className="page">
         <header className="header">
           <h1>Manage</h1>
-          <p className="lede">Ники и SIP-привязки к PBX. Basic auth.</p>
+          <p className="lede">Ники и SIP-привязки к PBX. API token (MANAGE_API_TOKEN).</p>
         </header>
         <form className="card" onSubmit={onLogin}>
           <label>
-            Логин
-            <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="admin" autoFocus />
-          </label>
-          <label>
-            Пароль
+            API token
             <input
               type="password"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              placeholder="admin"
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              placeholder="dev-manage-token"
+              autoFocus
+              autoComplete="off"
             />
           </label>
           {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={busy}>
+          <button type="submit" disabled={busy || !apiToken.trim()}>
             Войти
           </button>
         </form>
@@ -199,9 +192,12 @@ export default function App() {
         <h1>Manage — абоненты</h1>
         <p className="lede">SIP server — hostname с точки зрения Janus (на стенде: asterisk).</p>
         <div className="row" style={{ marginTop: "0.75rem" }}>
-          <button type="button" className="secondary" onClick={() => load(user, pass)} disabled={busy}>
+          <button type="button" className="secondary" onClick={() => load(apiToken)} disabled={busy}>
             Обновить
           </button>
+          <a className="secondary" href="/manage-api/api/manage/docs" target="_blank" rel="noreferrer">
+            OpenAPI
+          </a>
           <button type="button" className="secondary" onClick={onLogout}>
             Выйти
           </button>

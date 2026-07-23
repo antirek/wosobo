@@ -1,0 +1,289 @@
+openapi: 3.0.3
+info:
+  title: Wosobo Manage API
+  version: 0.1.0
+  description: |
+    Управление абонентами (ник ↔ SIP на PBX) и опциями.
+    Auth: `Authorization: Bearer <MANAGE_API_TOKEN>` или `X-Api-Token`.
+servers:
+  - url: /
+tags:
+  - name: health
+  - name: subscribers
+paths:
+  /api/health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/manage/subscribers:
+    get:
+      tags: [subscribers]
+      operationId: listSubscribers
+      summary: Список абонентов с runtime-статусом линии
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SubscriberWithRuntime"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/manage/subscribers/{nick}:
+    parameters:
+      - $ref: "#/components/parameters/Nick"
+    get:
+      tags: [subscribers]
+      operationId: getSubscriber
+      summary: Один абонент
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriberWithRuntime"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [subscribers]
+      operationId: putSubscriber
+      summary: Создать или полностью обновить абонента
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriberWrite"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriberPublic"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [subscribers]
+      operationId: patchSubscriber
+      summary: Частичное обновление
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriberPatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriberPublic"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [subscribers]
+      operationId: deleteSubscriber
+      summary: Удалить абонента
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    apiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Значение = env MANAGE_API_TOKEN
+    apiTokenHeader:
+      type: apiKey
+      in: header
+      name: X-Api-Token
+      description: Альтернатива Bearer; значение = MANAGE_API_TOKEN
+  parameters:
+    Nick:
+      name: nick
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9._-]{0,31}$"
+  responses:
+    Unauthorized:
+      description: Нет или неверный API token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Health:
+      type: object
+      required: [ok, service]
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+          example: manage-api
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        nick:
+          type: string
+    SipPublic:
+      type: object
+      properties:
+        server:
+          type: string
+        username:
+          type: string
+        authuser:
+          type: string
+          nullable: true
+        transport:
+          type: string
+        passwordSet:
+          type: boolean
+    SipWrite:
+      type: object
+      required: [server, username]
+      properties:
+        server:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        authuser:
+          type: string
+          nullable: true
+        transport:
+          type: string
+    Runtime:
+      type: object
+      properties:
+        sipRegistered:
+          type: boolean
+        lineStatus:
+          type: string
+        lineDetail:
+          type: string
+        softphoneOnline:
+          type: boolean
+        callPhase:
+          type: string
+    SubscriberPublic:
+      type: object
+      properties:
+        nick:
+          type: string
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        absentAnnounce:
+          type: boolean
+        sip:
+          $ref: "#/components/schemas/SipPublic"
+        createdAt: {}
+        updatedAt: {}
+    SubscriberWithRuntime:
+      allOf:
+        - $ref: "#/components/schemas/SubscriberPublic"
+        - type: object
+          properties:
+            runtime:
+              $ref: "#/components/schemas/Runtime"
+    SubscriberWrite:
+      type: object
+      properties:
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        absentAnnounce:
+          type: boolean
+        sip:
+          $ref: "#/components/schemas/SipWrite"
+    SubscriberPatch:
+      type: object
+      properties:
+        displayName:
+          type: string
+        enabled:
+          type: boolean
+        absentAnnounce:
+          type: boolean
+        sip:
+          $ref: "#/components/schemas/SipWrite"

@@ -1,18 +1,13 @@
 const API_BASE = import.meta.env.VITE_MANAGE_API_BASE || "/manage-api";
 
-function authHeader(user, pass) {
-  return `Basic ${btoa(`${user}:${pass}`)}`;
-}
-
 /**
- * @param {string} user
- * @param {string} pass
+ * @param {string} token
  * @param {string} path
  * @param {RequestInit} [init]
  */
-export async function manageFetch(user, pass, path, init = {}) {
+export async function manageFetch(token, path, init = {}) {
   const headers = new Headers(init.headers || {});
-  headers.set("Authorization", authHeader(user, pass));
+  headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }

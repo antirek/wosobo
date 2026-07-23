@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 COPY src ./src
+COPY openapi ./openapi
 
 ENV PORT=3121
 EXPOSE 3121

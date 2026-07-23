@@ -13,6 +13,9 @@
 		reverse_proxy manage-api:3121
 	}
 
+	# Частая ошибка: /api/manage/* уходит в softphone-api → редирект на manage-api
+	redir /api/manage* /manage-api{uri} 308
+
 	# softphone-api HTTP + WebSocket
 	handle /api/* {
 		reverse_proxy softphone-api:3101

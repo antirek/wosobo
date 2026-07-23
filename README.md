@@ -13,7 +13,7 @@ WebRTC-клиент можно **встроить в любое приложен
 
 Браузерный softphone на стенде — пример такого клиента: логинится по **нику**, получает short-lived token, дальше только softphone-api. SIP password в браузер **не** попадает.
 
-Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
+Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md), [`PLAN-manage-openapi.md`](./PLAN-manage-openapi.md), [`PLAN-softphone-embed.md`](./PLAN-softphone-embed.md).
 
 ## HTTP(S) через Caddy
 
@@ -53,10 +53,11 @@ echo '127.0.0.1 service' | sudo tee -a /etc/hosts
 docker-compose up -d --build
 ```
 
-1. Manage: https://service/manage/ — Basic `admin` / `admin`
+1. Manage: https://service/manage/ — API token `dev-manage-token`
 2. Softphone: https://service/softphone/ — `alice`
 3. Наберите `1000` (Playback) или `1004` (Echo)
 4. Monitor: https://service/monitor/
+5. OpenAPI: https://service/manage-api/api/manage/docs (Authorize → Bearer `dev-manage-token`)
 
 После правок UI: `docker-compose up -d --build caddy`
 
@@ -100,5 +101,5 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 
 ## API (кратко)
 
-- **manage-api** — учётные данные и опции: Basic auth, `CRUD /api/manage/subscribers`
+- **manage-api** — учётные данные и опции: Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, docs `/api/manage/docs`
 - **softphone-api** — звонки: `POST /api/session` (ник → token), WSS `/ws/softphone?token=…` (dial / accept / hangup / trickle / update)
