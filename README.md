@@ -29,7 +29,7 @@ WebRTC-клиент можно **встроить в любое приложен
 |-----|------|
 | https://service/demo/ | host-backend demo (ник → mint → mount) |
 | https://service/embed/softphone.js | IIFE `WosoboSoftphone` |
-| https://service/manage/ | manage UI |
+| https://service/manage/ | manage UI (абоненты + звонки) |
 | https://service/monitor/ | monitor |
 | https://service/manage-api/… | manage-api |
 | https://service/api/… | phone-server HTTP (health; DELETE session) |
@@ -144,7 +144,7 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 
 ## API (кратко)
 
-- **manage-api** — Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, mint `POST /api/manage/subscribers/{nick}/session`, docs `/api/manage/docs`
+- **manage-api** — Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, mint `POST /api/manage/subscribers/{nick}/session`, CDR `GET /api/manage/calls`, docs `/api/manage/docs`
 - **phone-server** — HTTP `:3101` (`DELETE /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…&nick=…`)
 - **embed** — `GET /embed/softphone.js` → `WosoboSoftphone.mount({ token, nick })`
 - **softphone-demo** — пример host: `POST /demo/session` (mint через manage token)

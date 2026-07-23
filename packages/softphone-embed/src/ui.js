@@ -14,6 +14,7 @@ const CALL_LABELS = {
   idle: "Нет звонка",
   outgoing: "Исходящий…",
   incoming: "Входящий",
+  accepting: "Ответ…",
   incall: "Разговор",
   "reconnecting-media": "Медиа…",
   absent: "Абонент отсутствует",
@@ -86,6 +87,8 @@ export function createFloatingUi(handlers) {
   const numberInput = /** @type {HTMLInputElement} */ (root.querySelector(".wsp-number"));
   const dialBtn = /** @type {HTMLButtonElement} */ (root.querySelector('[data-act="dial"]'));
   const hangupBtn = /** @type {HTMLButtonElement} */ (root.querySelector('[data-act="hangup"]'));
+  const acceptBtn = /** @type {HTMLButtonElement} */ (root.querySelector('[data-act="accept"]'));
+  const declineBtn = /** @type {HTMLButtonElement} */ (root.querySelector('[data-act="decline"]'));
   const muteBtn = /** @type {HTMLButtonElement} */ (root.querySelector(".wsp-mute"));
   const reconnectBtn = /** @type {HTMLButtonElement} */ (root.querySelector(".wsp-reconnect"));
   const audioEl = /** @type {HTMLAudioElement} */ (root.querySelector(".wsp-audio"));
@@ -112,13 +115,15 @@ export function createFloatingUi(handlers) {
     const inCall =
       callState === "outgoing" ||
       callState === "incoming" ||
+      callState === "accepting" ||
       callState === "incall" ||
       callState === "reconnecting-media";
     const canDial = registered && callState === "idle";
+    const ringing = callState === "incoming" || callState === "accepting";
     dialBtn.disabled = !canDial;
     numberInput.disabled = !canDial;
-    hangupBtn.hidden = !inCall || callState === "incoming";
-    dialBtn.hidden = inCall && callState !== "incoming";
+    hangupBtn.hidden = !inCall || ringing;
+    dialBtn.hidden = inCall && !ringing;
     muteBtn.hidden = !(
       callState === "incall" ||
       callState === "outgoing" ||
@@ -129,8 +134,10 @@ export function createFloatingUi(handlers) {
       lineStatus === "error" ||
       lineStatus === "reconnecting"
     );
-    incomingBox.hidden = callState !== "incoming";
-    dialBox.hidden = callState === "incoming";
+    incomingBox.hidden = !ringing;
+    dialBox.hidden = ringing;
+    if (acceptBtn) acceptBtn.disabled = callState === "accepting";
+    if (declineBtn) declineBtn.disabled = callState === "accepting";
   }
 
   root.addEventListener("click", (ev) => {

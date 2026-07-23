@@ -5,6 +5,7 @@ import { createDocsRouter } from "./routes/docs.js";
 import { createHealthRouter } from "./routes/health.js";
 import { createSubscribersRouter } from "./routes/subscribers.js";
 import { createSessionRouter } from "./routes/session.js";
+import { createCallsRouter } from "./routes/calls.js";
 import { createSoftphoneInternal } from "./services/softphoneInternal.js";
 
 /**
@@ -13,6 +14,7 @@ import { createSoftphoneInternal } from "./services/softphoneInternal.js";
  *   corsOrigin: string | string[],
  *   subscribers: import('mongodb').Collection,
  *   sessions: import('mongodb').Collection,
+ *   callRecords: import('mongodb').Collection,
  *   softphoneInternalUrl: string,
  *   internalToken: string,
  *   sessionTtlSec?: number,
@@ -50,6 +52,12 @@ export function createApp(opts) {
       sessions: opts.sessions,
       requireAuth,
       defaultTtlSec: opts.sessionTtlSec,
+    }),
+  );
+  app.use(
+    createCallsRouter({
+      callRecords: opts.callRecords,
+      requireAuth,
     }),
   );
 

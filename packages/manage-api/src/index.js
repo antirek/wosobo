@@ -25,9 +25,11 @@ await client.connect();
 const db = client.db();
 const subscribers = db.collection("subscribers");
 const sessions = db.collection("softphone_sessions");
+const callRecords = db.collection("call_records");
 await subscribers.createIndex({ nick: 1 }, { unique: true });
 await sessions.createIndex({ token: 1 }, { unique: true });
 await sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+await callRecords.createIndex({ startedAt: -1 });
 await seedSubscribers(subscribers);
 
 const { app, softphone } = createApp({
@@ -35,6 +37,7 @@ const { app, softphone } = createApp({
   corsOrigin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN,
   subscribers,
   sessions,
+  callRecords,
   softphoneInternalUrl: PHONE_SERVER_URL,
   internalToken: INTERNAL_TOKEN,
   sessionTtlSec: 24 * 60 * 60,

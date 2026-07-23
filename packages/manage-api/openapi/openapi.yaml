@@ -10,6 +10,7 @@ servers:
 tags:
   - name: health
   - name: subscribers
+  - name: calls
 paths:
   /api/health:
     get:
@@ -176,6 +177,37 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/manage/calls:
+    get:
+      tags: [calls]
+      operationId: listCalls
+      summary: Журнал звонков (CDR), новые сверху
+      security:
+        - apiToken: []
+        - apiTokenHeader: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
   securitySchemes:
     apiToken:
@@ -340,3 +372,51 @@ components:
           type: integer
           description: Unix ms
           example: 1720000000000
+    CallRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        nick:
+          type: string
+        direction:
+          type: string
+          enum: [in, out]
+        peer:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        answeredAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationSec:
+          type: integer
+        ringSec:
+          type: integer
+        status:
+          type: string
+        hangupCause:
+          type: string
+          nullable: true
+        softphoneOnline:
+          type: boolean
+    CallList:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallRecord"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer

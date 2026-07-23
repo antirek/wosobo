@@ -119,6 +119,12 @@ button:disabled {
   align-items: center;
 }
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

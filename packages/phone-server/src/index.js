@@ -5,6 +5,7 @@ import { MongoClient } from "mongodb";
 import { WebSocketServer } from "ws";
 import { LineManager } from "./lineManager.js";
 import { createAbsentAnnounceService } from "./absent/index.js";
+import { createCallCdrStore } from "./callCdr.js";
 
 const PORT = Number(process.env.PORT || 3101);
 const WS_PORT = Number(process.env.WS_PORT || 3102);
@@ -17,6 +18,7 @@ const JANUS_WS_URL = process.env.JANUS_WS_URL || "ws://127.0.0.1:8188";
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
 const ABSENT_ANNOUNCE_FILE = process.env.ABSENT_ANNOUNCE_FILE || "/app/media/absent.wav";
 const ABSENT_ANNOUNCE_MAX_SEC = Number(process.env.ABSENT_ANNOUNCE_MAX_SEC || 30);
+const CALL_CDR_TTL_SEC = Number(process.env.CALL_CDR_TTL_SEC || 2 * 24 * 60 * 60);
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN }));
@@ -27,10 +29,17 @@ await client.connect();
 const db = client.db();
 const subscribers = db.collection("subscribers");
 const sessionsCol = db.collection("softphone_sessions");
+const callRecords = db.collection("call_records");
 
 await sessionsCol.createIndex({ token: 1 }, { unique: true });
 // Mongo TTL: expiresAt must be Date
 await sessionsCol.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const cdr = createCallCdrStore(callRecords, {
+  ttlSec: CALL_CDR_TTL_SEC,
+  log: (line) => console.log(line),
+});
+await cdr.ensureIndexes();
 
 function normalizeNick(nick) {
   return String(nick || "")
@@ -76,6 +85,7 @@ const absentAnnounce = createAbsentAnnounceService({
 const lineManager = new LineManager({
   janusWsUrl: JANUS_WS_URL,
   absentAnnounce,
+  cdr,
   async getSubscriber(nick) {
     const doc = await subscribers.findOne({ nick });
     if (!doc) return null;
@@ -251,6 +261,7 @@ wsServer.listen(WS_PORT, async () => {
   console.log(`phone-server WebSocket (external) on :${WS_PORT} path /ws/softphone`);
   console.log(`Janus WS: ${JANUS_WS_URL}`);
   console.log(`Sessions: Mongo softphone_sessions (mint via manage-api)`);
+  console.log(`CDR: call_records TTL ${cdr.ttlSec}s`);
   console.log(`Absent announce file: ${ABSENT_ANNOUNCE_FILE}`);
   await bootLines();
 });

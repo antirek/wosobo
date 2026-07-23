@@ -77,7 +77,7 @@ export function connectSoftphone(opts, callbacks = {}) {
   /** @type {MediaStream | null} */
   let remoteStream = null;
   let muted = false;
-  /** @type {'idle'|'outgoing'|'incoming'|'incall'} */
+  /** @type {'idle'|'outgoing'|'incoming'|'accepting'|'incall'} */
   let phase = "idle";
   /** @type {object | null} */
   let pendingOffer = null;
@@ -85,6 +85,7 @@ export function connectSoftphone(opts, callbacks = {}) {
   let pendingRemoteCandidates = [];
   /** Не шлём trickle, пока Janus не получил SDP */
   let trickleEnabled = false;
+  let acceptInFlight = false;
 
   function send(obj) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -351,6 +352,7 @@ export function connectSoftphone(opts, callbacks = {}) {
   function resetCallLocal() {
     phase = "idle";
     pendingOffer = null;
+    acceptInFlight = false;
     iceRestartTried = false;
     iceRestartInFlight = false;
     cleanupPc();
@@ -406,20 +408,25 @@ export function connectSoftphone(opts, callbacks = {}) {
     }
   }
 
-  async function applyRemoteJsep(jsep) {
+  async function applyRemoteJsep(jsep, fallbackType = "answer") {
     if (!jsep?.sdp) return;
     const peer = await ensurePc();
     const desc = {
-      type: jsep.type || "answer",
+      type: String(jsep.type || fallbackType).toLowerCase(),
       sdp: jsep.sdp,
     };
     if (peer.signalingState === "stable" && peer.remoteDescription && desc.type === "answer") {
       log(`skip duplicate remote answer (already ${peer.remoteDescription.type})`);
       return;
     }
+    if (peer.signalingState === "have-remote-offer" && desc.type === "offer" && peer.remoteDescription) {
+      log(`skip duplicate remote offer (already applied)`);
+      return;
+    }
     const dir = (desc.sdp.match(/^a=(sendrecv|sendonly|recvonly|inactive)/m) || [])[1] || "?";
-    log(`setRemoteDescription ${desc.type} (${desc.sdp.length} bytes) state=${peer.signalingState} dir=${dir}`);
+    log(`setRemoteDescription ${desc.type} (${desc.sdp.length} bytes) before=${peer.signalingState} dir=${dir}`);
     await peer.setRemoteDescription(desc);
+    log(`setRemoteDescription done after=${peer.signalingState}`);
     await flushRemoteCandidates();
   }
 
@@ -572,6 +579,9 @@ export function connectSoftphone(opts, callbacks = {}) {
           if (msg.call.state === "idle") {
             pendingOffer = null;
             cleanupPc();
+          } else if (msg.call.state === "incoming" && msg.call.jsep) {
+            pendingOffer = msg.call.jsep;
+            callbacks.onIncoming?.(msg.call.caller || "unknown", msg.call.jsep);
           }
         }
         return;
@@ -600,6 +610,9 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
       if (type === "jsep") {
         try {
+          if (phase === "incoming" && msg.jsep && !pendingOffer) {
+            pendingOffer = msg.jsep;
+          }
           await applyRemoteJsep(msg.jsep);
           if (iceRestartInFlight) {
             log("got remote jsep during ICE restart");
@@ -691,33 +704,52 @@ export function connectSoftphone(opts, callbacks = {}) {
     },
 
     async accept() {
+      // Double-click / second event while answering must not show "Нет входящего"
+      if (acceptInFlight || phase === "accepting" || phase === "incall") {
+        log("accept ignored (already answering or in call)");
+        return;
+      }
       if (phase !== "incoming") {
         callbacks.onError?.(new Error("Нет входящего"));
         return;
       }
+      acceptInFlight = true;
+      // Sync lock before any await — prevents double-accept during getUserMedia
+      phase = "accepting";
+      callbacks.onCall?.("accepting");
       try {
+        const offer = pendingOffer;
+        pendingOffer = null;
+        if (!offer?.sdp) {
+          throw new Error("Нет SDP offer для входящего — дождитесь звонка и попробуйте снова");
+        }
         trickleEnabled = false;
+        // Offer first, then mic — createAnswer needs have-remote-offer
+        await applyRemoteJsep(offer, "offer");
         await addLocalAudio();
         const peer = await ensurePc();
-        let localJsep;
-        if (pendingOffer) {
-          await applyRemoteJsep(pendingOffer);
-          localJsep = await peer.createAnswer();
-        } else {
-          localJsep = await peer.createOffer({ offerToReceiveAudio: true });
+        log(`accept createAnswer signaling=${peer.signalingState}`);
+        if (
+          peer.signalingState !== "have-remote-offer" &&
+          peer.signalingState !== "have-local-pranswer"
+        ) {
+          throw new Error(`Нельзя ответить в состоянии ${peer.signalingState}`);
         }
+        const localJsep = await peer.createAnswer();
         await peer.setLocalDescription(localJsep);
         const jsep = await finalizeLocalJsep(localJsep);
         phase = "incall";
         send({ type: "accept", jsep });
         trickleEnabled = true;
         callbacks.onCall?.("incall");
-        pendingOffer = null;
       } catch (err) {
+        log(`accept failed: ${err.message || err}`);
         send({ type: "decline" });
         resetCallLocal();
         callbacks.onCall?.("idle");
         callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        acceptInFlight = false;
       }
     },
 

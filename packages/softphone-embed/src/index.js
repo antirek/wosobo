@@ -87,6 +87,9 @@ function mount(opts) {
       },
       onCall(state, detail, caller) {
         ui.setCall(state, detail || caller);
+        if (state === "incall" || state === "accepting" || state === "idle") {
+          ui.setError("");
+        }
         if (state === "incoming") {
           ringtone.start().catch(() => {});
         } else {

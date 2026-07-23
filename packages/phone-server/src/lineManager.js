@@ -20,6 +20,7 @@ export class LineManager {
    *   getSubscriber: (nick: string) => Promise<Subscriber | null>,
    *   listEnabled: () => Promise<Subscriber[]>,
    *   absentAnnounce?: ReturnType<import('./absent/index.js').createAbsentAnnounceService>,
+   *   cdr?: ReturnType<import('./callCdr.js').createCallCdrStore> | null,
    *   onLog?: (line: string) => void,
    * }} opts
    */
@@ -28,6 +29,7 @@ export class LineManager {
     this.getSubscriber = opts.getSubscriber;
     this.listEnabled = opts.listEnabled;
     this.absentAnnounce = opts.absentAnnounce || null;
+    this.cdr = opts.cdr || null;
     this.onLog = opts.onLog || console.log.bind(console);
     /** @type {Map<string, Line>} */
     this.lines = new Map();
@@ -142,10 +144,106 @@ class Line {
     this.wantUp = true;
     this.reconnectTimer = null;
     this.reconnectAttempt = 0;
+    /** @type {string | null} */
+    this.activeCallId = null;
+    this.cdrAnswered = false;
+    /** @type {Date | null} */
+    this.cdrAnsweredAt = null;
   }
 
   log(msg) {
     this.manager.onLog(`[${this.nick}] ${msg}`);
+  }
+
+  /**
+   * @param {{
+   *   direction: 'in' | 'out',
+   *   peer: string,
+   *   status: string,
+   *   softphoneOnline?: boolean,
+   * }} p
+   */
+  _cdrBegin(p) {
+    const cdr = this.manager.cdr;
+    if (!cdr) return;
+    if (this.activeCallId) {
+      void cdr.end(this.activeCallId, {
+        status: "failed",
+        hangupCause: "superseded",
+        answeredAt: this.cdrAnsweredAt,
+      });
+    }
+    this.activeCallId = null;
+    this.cdrAnswered = false;
+    this.cdrAnsweredAt = null;
+    void cdr
+      .begin({
+        nick: this.nick,
+        direction: p.direction,
+        peer: p.peer,
+        status: p.status,
+        softphoneOnline: p.softphoneOnline,
+      })
+      .then((id) => {
+        this.activeCallId = id;
+      });
+  }
+
+  /** @param {string} status */
+  _cdrPatchStatus(status) {
+    const cdr = this.manager.cdr;
+    if (!cdr || !this.activeCallId) return;
+    void cdr.patch(this.activeCallId, { status });
+  }
+
+  _cdrMarkAnswered() {
+    if (this.cdrAnswered) {
+      this._cdrPatchStatus("incall");
+      return;
+    }
+    this.cdrAnswered = true;
+    this.cdrAnsweredAt = new Date();
+    const cdr = this.manager.cdr;
+    if (!cdr || !this.activeCallId) return;
+    void cdr.patch(this.activeCallId, {
+      status: "incall",
+      answeredAt: this.cdrAnsweredAt,
+    });
+  }
+
+  /**
+   * @param {string} phaseBeforeReset
+   * @param {{ status?: string, cause?: string | null }} [opts]
+   */
+  _cdrEnd(phaseBeforeReset, opts = {}) {
+    const cdr = this.manager.cdr;
+    const id = this.activeCallId;
+    this.activeCallId = null;
+    if (!cdr || !id) return;
+
+    let status = opts.status;
+    if (!status) {
+      if (phaseBeforeReset === "incall" || this.cdrAnswered) status = "answered";
+      else if (phaseBeforeReset === "incoming") status = "missed";
+      else if (phaseBeforeReset === "outgoing") status = "cancelled";
+      else if (phaseBeforeReset === "absent") status = "absent";
+      else status = "failed";
+    }
+
+    const cause = opts.cause != null ? String(opts.cause) : null;
+    if (!opts.status && cause) {
+      const c = cause.toLowerCase();
+      if (c.includes("486") || c.includes("busy")) status = "busy";
+      else if (phaseBeforeReset === "outgoing" && !this.cdrAnswered) {
+        if (c.includes("cancel")) status = "cancelled";
+        else status = "no_answer";
+      }
+    }
+
+    const answeredAt = this.cdrAnsweredAt;
+    this.cdrAnswered = false;
+    this.cdrAnsweredAt = null;
+    void cdr.end(id, { status, hangupCause: cause, answeredAt });
   }
 
   toStatus() {
@@ -243,11 +341,12 @@ class Line {
    */
   attachSoftphone(ws) {
     if (this.softphoneWs && this.softphoneWs !== ws && this.softphoneWs.readyState === 1) {
-      return {
-        ok: false,
-        code: "already_connected",
-        message: "Уже открыта другая вкладка",
-      };
+      this.log("softphone replaced (kick previous tab)");
+      try {
+        this.softphoneWs.close(4003, "replaced");
+      } catch {
+        /* ignore */
+      }
     }
     this.softphoneWs = ws;
     this._sendToSoftphone({
@@ -258,6 +357,10 @@ class Line {
         state: this.callPhase,
         detail: this.callDetail || undefined,
         caller: this.caller || undefined,
+        // re-offer SDP if mid-ring reconnect
+        ...(this.callPhase === "incoming" && this.pendingIncomingJsep
+          ? { jsep: this.pendingIncomingJsep }
+          : {}),
       },
     });
     return { ok: true };
@@ -272,7 +375,7 @@ class Line {
     if (this.callPhase !== "idle") {
       this.log("softphone gone during call — hangup");
       this._hangupSip();
-      this._resetCall();
+      this._resetCall({ status: this.callPhase === "outgoing" && !this.cdrAnswered ? "cancelled" : undefined });
     }
   }
 
@@ -354,6 +457,12 @@ class Line {
     }
     this.callPhase = "outgoing";
     this.callDetail = uri;
+    this._cdrBegin({
+      direction: "out",
+      peer: String(msg.number || "").trim() || uri,
+      status: "dialing",
+      softphoneOnline: true,
+    });
     this._sendCall({ state: "outgoing", detail: uri });
     this.session.sendMessageFire(
       this.handleId,
@@ -372,6 +481,11 @@ class Line {
       });
       return;
     }
+    // Duplicate accept after answer (double-click) — ignore quietly
+    if (this.callPhase === "incall") {
+      this.log("accept ignored (already in call)");
+      return;
+    }
     if (this.callPhase !== "incoming" || !this.session || !this.handleId) {
       this._sendToSoftphone({ type: "error", code: "no_incoming", message: "Нет входящего" });
       return;
@@ -382,6 +496,7 @@ class Line {
     }
     this.callPhase = "incall";
     this.pendingIncomingJsep = null;
+    this._cdrMarkAnswered();
     this._sendCall({ state: "incall", caller: this.caller });
     this.session.sendMessageFire(
       this.handleId,
@@ -400,7 +515,7 @@ class Line {
     } catch {
       /* ignore */
     }
-    this._resetCall();
+    this._resetCall({ status: "rejected" });
   }
 
   /** ICE restart / re-INVITE answer — Janus SIP `update` */
@@ -431,8 +546,13 @@ class Line {
       this.manager.absentAnnounce?.cancel(this.nick, "client hangup");
       return;
     }
+    const phase = this.callPhase;
     this._hangupSip();
-    this._resetCall();
+    let status;
+    if (phase === "outgoing" && !this.cdrAnswered) status = "cancelled";
+    else if (phase === "incoming") status = "missed";
+    else if (phase === "incall" || this.cdrAnswered) status = "answered";
+    this._resetCall({ status, cause: "client hangup" });
   }
 
   _hangupSip() {
@@ -443,9 +563,16 @@ class Line {
     }
   }
 
-  _resetCall() {
-    if (this.callPhase === "absent") {
+  /**
+   * @param {{ status?: string, cause?: string | null }} [opts]
+   */
+  _resetCall(opts = {}) {
+    const phase = this.callPhase;
+    if (phase === "absent") {
       this.manager.absentAnnounce?.cancel(this.nick, "reset");
+    }
+    if (phase !== "idle") {
+      this._cdrEnd(phase, opts);
     }
     this.callPhase = "idle";
     this.callDetail = "";
@@ -458,6 +585,7 @@ class Line {
   _onAbsentFinished(reason) {
     this.log(`absent done: ${reason}`);
     if (this.callPhase !== "absent") return;
+    this._cdrEnd("absent", { status: "absent", cause: reason || null });
     this.callPhase = "idle";
     this.callDetail = "";
     this.caller = "";
@@ -471,7 +599,7 @@ class Line {
       this.log("Janus disconnected");
       this.session = null;
       this.handleId = null;
-      if (this.callPhase !== "idle") this._resetCall();
+      if (this.callPhase !== "idle") this._resetCall({ status: "failed", cause: "janus disconnected" });
       this._scheduleReconnect("janus disconnected");
       return;
     }
@@ -540,7 +668,7 @@ class Line {
       const detail = data.error || `code ${data.error_code}`;
       this.log(`plugin error: ${detail}`);
       if (this.callPhase !== "idle") {
-        this._resetCall();
+        this._resetCall({ status: "failed", cause: String(detail) });
         this._sendToSoftphone({ type: "error", code: "sip_error", message: String(detail) });
       } else {
         this._setLine("error", String(detail));
@@ -589,6 +717,7 @@ class Line {
     } else if (event === "accepted") {
       if (this.callPhase === "outgoing" || this.callPhase === "incall") {
         this.callPhase = "incall";
+        this._cdrMarkAnswered();
         this._sendCall({ state: "incall", detail: result.username || "" });
       }
       if (jsep) this._sendToSoftphone({ type: "jsep", jsep });
@@ -601,6 +730,7 @@ class Line {
       if (jsep) this._sendToSoftphone({ type: "jsep", jsep });
       if (this.callPhase === "outgoing" || this.callPhase === "incall") {
         this.callPhase = "incall";
+        this._cdrMarkAnswered();
         this._sendCall({ state: "incall", detail: "media updated" });
       }
     } else if (event === "updatingcall") {
@@ -623,9 +753,9 @@ class Line {
       if (this.callPhase === "absent") {
         this.manager.absentAnnounce?.cancel(this.nick, "remote hangup");
       }
-      this._resetCall();
+      this._resetCall({ cause: reason || null });
       if (reason) {
-        this._sendCall({ state: "idle", detail: reason });
+        this._sendToSoftphone({ type: "call", state: "idle", detail: reason });
       }
     }
   }
@@ -647,7 +777,14 @@ class Line {
       this.callPhase = "incoming";
       this.caller = caller;
       this.pendingIncomingJsep = jsep || null;
-      this._sendCall({ state: "incoming", caller });
+      this.callDetail = "";
+      this._cdrBegin({
+        direction: "in",
+        peer: caller,
+        status: "ringing",
+        softphoneOnline: true,
+      });
+      this.log(`incoming from ${caller} jsep=${Boolean(jsep?.sdp)}`);
       /** @type {Record<string, unknown>} */
       const payload = { type: "incoming", caller };
       if (jsep) payload.jsep = jsep;
@@ -663,6 +800,12 @@ class Line {
       this.callPhase = "absent";
       this.caller = caller;
       this.callDetail = "absent announce";
+      this._cdrBegin({
+        direction: "in",
+        peer: caller,
+        status: "absent",
+        softphoneOnline: false,
+      });
       const taken = await this.manager.absentAnnounce.tryHandleIncoming({
         nick: this.nick,
         subscriber: sub,
@@ -687,6 +830,8 @@ class Line {
         this.log(`absent announce for ${caller}`);
         return;
       }
+      // absent not taken — fall through to 486; close CDR as missed
+      this._cdrEnd("absent", { status: "missed", cause: "absent not started" });
       this.callPhase = "idle";
       this.caller = "";
       this.callDetail = "";
@@ -695,6 +840,20 @@ class Line {
     }
 
     this.log("incoming without softphone — 486");
+    const cdr = this.manager.cdr;
+    if (cdr) {
+      void cdr
+        .begin({
+          nick: this.nick,
+          direction: "in",
+          peer: caller,
+          status: "missed",
+          softphoneOnline: false,
+        })
+        .then((id) =>
+          cdr.end(id, { status: "missed", hangupCause: "486 softphone offline" }),
+        );
+    }
     this.session?.sendMessageFire(this.handleId, { request: "decline", code: 486 });
   }
 

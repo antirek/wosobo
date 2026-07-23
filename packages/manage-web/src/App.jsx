@@ -25,19 +25,45 @@ export default function App() {
   const [minted, setMinted] = useState(null);
   const [mintBusyNick, setMintBusyNick] = useState("");
   const [copied, setCopied] = useState(false);
+  /** @type {['subscribers' | 'calls', Function]} */
+  const [tab, setTab] = useState("subscribers");
+  const [calls, setCalls] = useState([]);
+  const [callsTotal, setCallsTotal] = useState(0);
+  const [callsOffset, setCallsOffset] = useState(0);
+  const CALLS_LIMIT = 50;
 
   const load = useCallback(async (token) => {
     const data = await manageFetch(token, "/api/manage/subscribers");
     setItems(data.items || []);
   }, []);
 
+  const loadCalls = useCallback(
+    async (token, offset = 0) => {
+      const q = new URLSearchParams({
+        limit: String(CALLS_LIMIT),
+        offset: String(offset),
+      });
+      const data = await manageFetch(token, `/api/manage/calls?${q}`);
+      setCalls(data.items || []);
+      setCallsTotal(Number(data.total) || 0);
+      setCallsOffset(Number(data.offset) || offset);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!authed || !apiToken) return undefined;
+    if (tab === "subscribers") {
+      const id = setInterval(() => {
+        load(apiToken).catch(() => {});
+      }, 3000);
+      return () => clearInterval(id);
+    }
     const id = setInterval(() => {
-      load(apiToken).catch(() => {});
-    }, 3000);
+      loadCalls(apiToken, callsOffset).catch(() => {});
+    }, 5000);
     return () => clearInterval(id);
-  }, [authed, apiToken, load]);
+  }, [authed, apiToken, load, loadCalls, tab, callsOffset]);
 
   useEffect(() => {
     try {
@@ -73,9 +99,30 @@ export default function App() {
     sessionStorage.removeItem(AUTH_KEY);
     setAuthed(false);
     setItems([]);
+    setCalls([]);
     setForm(EMPTY_FORM);
     setEditing(null);
     setMinted(null);
+    setTab("subscribers");
+  }
+
+  async function switchTab(next) {
+    setTab(next);
+    setError("");
+    if (next === "calls" && apiToken) {
+      try {
+        await loadCalls(apiToken, 0);
+      } catch (err) {
+        setError(err.message || String(err));
+      }
+    }
+  }
+
+  function formatDuration(sec) {
+    const s = Math.max(0, Number(sec) || 0);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, "0")}`;
   }
 
   async function onMintToken(item) {
@@ -222,10 +269,35 @@ export default function App() {
   return (
     <div className="page">
       <header className="header">
-        <h1>Manage — абоненты</h1>
+        <h1>Manage</h1>
         <p className="lede">SIP server — hostname с точки зрения Janus (на стенде: asterisk).</p>
+        <div className="tabs" style={{ marginTop: "0.75rem" }}>
+          <button
+            type="button"
+            className={tab === "subscribers" ? "" : "secondary"}
+            onClick={() => switchTab("subscribers")}
+          >
+            Абоненты
+          </button>
+          <button
+            type="button"
+            className={tab === "calls" ? "" : "secondary"}
+            onClick={() => switchTab("calls")}
+          >
+            Звонки
+          </button>
+        </div>
         <div className="row" style={{ marginTop: "0.75rem" }}>
-          <button type="button" className="secondary" onClick={() => load(apiToken)} disabled={busy}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() =>
+              tab === "calls"
+                ? loadCalls(apiToken, callsOffset).catch((e) => setError(e.message))
+                : load(apiToken)
+            }
+            disabled={busy}
+          >
             Обновить
           </button>
           <a className="secondary" href="/manage-api/api/manage/docs" target="_blank" rel="noreferrer">
@@ -243,6 +315,87 @@ export default function App() {
         </section>
       ) : null}
 
+      {tab === "calls" ? (
+        <section className="card">
+          <h2>Звонки</h2>
+          <p className="hint">
+            CDR (TTL 2 дня). Время — локаль браузера. Стр. {Math.floor(callsOffset / CALLS_LIMIT) + 1} ·{" "}
+            {callsTotal} всего · авто ~5 с
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Время</th>
+                <th>Ник</th>
+                <th></th>
+                <th>Peer</th>
+                <th>Длит.</th>
+                <th>Статус</th>
+                <th>Cause</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calls.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    {c.startedAt ? new Date(c.startedAt).toLocaleString() : "—"}
+                    {!c.endedAt ? (
+                      <>
+                        <br />
+                        <span className="hint">идёт</span>
+                      </>
+                    ) : null}
+                  </td>
+                  <td>
+                    <strong>{c.nick}</strong>
+                  </td>
+                  <td>{c.direction === "in" ? "←" : "→"}</td>
+                  <td>{c.peer}</td>
+                  <td>{formatDuration(c.durationSec)}</td>
+                  <td>
+                    <span className="badge on">{c.status}</span>
+                  </td>
+                  <td>
+                    <span className="hint">{c.hangupCause || "—"}</span>
+                  </td>
+                </tr>
+              ))}
+              {!calls.length ? (
+                <tr>
+                  <td colSpan={7} className="hint">
+                    Пока нет записей — сделайте тестовый звонок.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+          <div className="row" style={{ marginTop: "0.75rem" }}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={callsOffset <= 0 || busy}
+              onClick={() => {
+                const next = Math.max(0, callsOffset - CALLS_LIMIT);
+                loadCalls(apiToken, next).catch((e) => setError(e.message));
+              }}
+            >
+              ← Назад
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={callsOffset + CALLS_LIMIT >= callsTotal || busy}
+              onClick={() => {
+                const next = callsOffset + CALLS_LIMIT;
+                loadCalls(apiToken, next).catch((e) => setError(e.message));
+              }}
+            >
+              Вперёд →
+            </button>
+          </div>
+        </section>
+      ) : (
+        <>
       {minted ? (
         <section className="card mint-card">
           <h2>Session token — {minted.nick}</h2>
@@ -465,6 +618,8 @@ export default function App() {
           </button>
         </form>
       </section>
+        </>
+      )}
     </div>
   );
 }
