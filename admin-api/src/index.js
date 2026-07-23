@@ -146,6 +146,10 @@ app.put("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
   const displayName =
     req.body.displayName != null ? String(req.body.displayName).trim() : existing?.displayName || nick;
   const enabled = req.body.enabled != null ? Boolean(req.body.enabled) : existing?.enabled ?? true;
+  const absentAnnounce =
+    req.body.absentAnnounce != null
+      ? Boolean(req.body.absentAnnounce)
+      : Boolean(existing?.absentAnnounce);
 
   /** @type {Record<string, unknown>} */
   const sip = { ...(existing?.sip || {}), ...parsed.sip };
@@ -164,6 +168,7 @@ app.put("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
         nick,
         displayName,
         enabled,
+        absentAnnounce,
         sip,
         updatedAt: now,
       },
@@ -194,6 +199,9 @@ app.patch("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
   }
   if (req.body.enabled != null) {
     $set.enabled = Boolean(req.body.enabled);
+  }
+  if (req.body.absentAnnounce != null) {
+    $set.absentAnnounce = Boolean(req.body.absentAnnounce);
   }
   if (req.body.sip && typeof req.body.sip === "object") {
     const parsed = parseSipWrite({ sip: req.body.sip }, { requirePassword: false });

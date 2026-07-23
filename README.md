@@ -2,7 +2,8 @@
 
 Админка заводит ники и SIP-привязку к PBX. Softphone — только звонки по нику, **без SIP-секретов** в браузере.
 
-План: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).
+План: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).  
+Анонс offline: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
 
 ## HTTP(S) через Caddy
 
@@ -65,7 +66,16 @@ docker-compose up -d --build
 2. Окно B: `bob` → звонок на `1001`
 3. На A: Принять / Отклонить
 
-После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без открытого softphone входящие → 486.
+После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Admin включено «Offline → абонент отсутствует») server-side проигрывается фраза из `softphone-api/media/absent.wav`, затем hangup.
+
+### Анонс «абонент отсутствует»
+
+План: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
+
+1. Admin → абонент → «Offline → абонент отсутствует» = да.
+2. Softphone этого ника **закрыть** (REGISTER останется).
+3. Позвонить на его extension с другого softphone.
+4. Слышен тон/фраза (~2 с), затем сброс.
 
 ## Тестовые extensions Asterisk
 

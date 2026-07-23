@@ -41,6 +41,8 @@ services:
       CORS_ORIGIN: https://service,http://localhost
       JANUS_WS_URL: ws://janus:8188
       INTERNAL_TOKEN: dev-internal-token
+      ABSENT_ANNOUNCE_FILE: /app/media/absent.wav
+      ABSENT_ANNOUNCE_MAX_SEC: "30"
     depends_on:
       - mongo
       - janus

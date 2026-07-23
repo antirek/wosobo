@@ -26,6 +26,7 @@ export async function seedSubscribers(col) {
       nick,
       displayName: item.displayName,
       enabled: item.enabled,
+      absentAnnounce: Boolean(item.absentAnnounce),
       sip: item.sip,
       createdAt: now,
       updatedAt: now,

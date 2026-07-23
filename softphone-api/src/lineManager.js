@@ -6,6 +6,7 @@ import { authUserFromUsername, buildCallUri, buildProxy, buildSipUsername } from
  * @property {string} nick
  * @property {string} [displayName]
  * @property {boolean} enabled
+ * @property {boolean} [absentAnnounce]
  * @property {{ server: string, username: string, password: string, authuser?: string }} sip
  */
 
@@ -18,6 +19,7 @@ export class LineManager {
    *   janusWsUrl: string,
    *   getSubscriber: (nick: string) => Promise<Subscriber | null>,
    *   listEnabled: () => Promise<Subscriber[]>,
+   *   absentAnnounce?: ReturnType<import('./absent/index.js').createAbsentAnnounceService>,
    *   onLog?: (line: string) => void,
    * }} opts
    */
@@ -25,6 +27,7 @@ export class LineManager {
     this.janusWsUrl = opts.janusWsUrl;
     this.getSubscriber = opts.getSubscriber;
     this.listEnabled = opts.listEnabled;
+    this.absentAnnounce = opts.absentAnnounce || null;
     this.onLog = opts.onLog || console.log.bind(console);
     /** @type {Map<string, Line>} */
     this.lines = new Map();
@@ -129,7 +132,7 @@ class Line {
     /** @type {'starting'|'registering'|'registered'|'offline'|'reconnecting'|'error'|'unregistering'} */
     this.lineStatus = "offline";
     this.lineDetail = "";
-    /** @type {'idle'|'outgoing'|'incoming'|'incall'} */
+    /** @type {'idle'|'outgoing'|'incoming'|'incall'|'absent'} */
     this.callPhase = "idle";
     this.callDetail = "";
     this.caller = "";
@@ -264,6 +267,8 @@ class Line {
   detachSoftphone(ws) {
     if (this.softphoneWs !== ws) return;
     this.softphoneWs = null;
+    // Absent announce is server-owned — do not hangup when UI disconnects
+    if (this.callPhase === "absent") return;
     if (this.callPhase !== "idle") {
       this.log("softphone gone during call — hangup");
       this._hangupSip();
@@ -317,6 +322,14 @@ class Line {
 
   /** @param {object} msg */
   _dial(msg) {
+    if (this.callPhase === "absent") {
+      this._sendToSoftphone({
+        type: "error",
+        code: "busy",
+        message: "Идёт автоответ «абонент отсутствует»",
+      });
+      return;
+    }
     if (!this.session || !this.handleId || !this.subscriber?.sip) {
       this._sendToSoftphone({ type: "error", code: "no_line", message: "Линия не готова" });
       return;
@@ -351,6 +364,14 @@ class Line {
 
   /** @param {object} msg */
   _accept(msg) {
+    if (this.callPhase === "absent") {
+      this._sendToSoftphone({
+        type: "error",
+        code: "busy",
+        message: "Идёт автоответ «абонент отсутствует»",
+      });
+      return;
+    }
     if (this.callPhase !== "incoming" || !this.session || !this.handleId) {
       this._sendToSoftphone({ type: "error", code: "no_incoming", message: "Нет входящего" });
       return;
@@ -406,6 +427,10 @@ class Line {
   }
 
   _hangupFromClient() {
+    if (this.callPhase === "absent") {
+      this.manager.absentAnnounce?.cancel(this.nick, "client hangup");
+      return;
+    }
     this._hangupSip();
     this._resetCall();
   }
@@ -419,11 +444,25 @@ class Line {
   }
 
   _resetCall() {
+    if (this.callPhase === "absent") {
+      this.manager.absentAnnounce?.cancel(this.nick, "reset");
+    }
     this.callPhase = "idle";
     this.callDetail = "";
     this.caller = "";
     this.pendingIncomingJsep = null;
     this._sendCall({ state: "idle" });
+  }
+
+  /** Player finished — do not re-enter cancel */
+  _onAbsentFinished(reason) {
+    this.log(`absent done: ${reason}`);
+    if (this.callPhase !== "absent") return;
+    this.callPhase = "idle";
+    this.callDetail = "";
+    this.caller = "";
+    this.pendingIncomingJsep = null;
+    this._sendCall({ state: "idle", detail: reason });
   }
 
   /** @param {object} msg */
@@ -439,6 +478,19 @@ class Line {
 
     if (msg.janus === "trickle") {
       const cand = msg.candidate;
+      if (this.callPhase === "absent") {
+        if (cand?.completed) {
+          this.manager.absentAnnounce?.addRemoteCandidate(this.nick, null);
+        } else if (cand) {
+          this.manager.absentAnnounce?.addRemoteCandidate(this.nick, {
+            candidate: cand.candidate,
+            sdpMid: cand.sdpMid,
+            sdpMLineIndex: cand.sdpMLineIndex,
+            usernameFragment: cand.usernameFragment,
+          });
+        }
+        return;
+      }
       if (cand?.completed) {
         this._sendToSoftphone({ type: "trickle", candidate: null });
       } else if (cand) {
@@ -474,6 +526,9 @@ class Line {
 
     if (msg.janus === "hangup") {
       this.log("Janus webrtc hangup");
+      if (this.callPhase === "absent") {
+        this.manager.absentAnnounce?.cancel(this.nick, "remote hangup");
+      }
       this._resetCall();
       return;
     }
@@ -515,7 +570,9 @@ class Line {
         this._setLine("offline");
       }
     } else if (event === "incomingcall") {
-      this._onIncoming(result, jsep);
+      this._onIncoming(result, jsep).catch((err) => {
+        this.log(`incoming handler: ${err.message || err}`);
+      });
     } else if (event === "calling") {
       if (this.callPhase === "outgoing") {
         this._sendCall({ state: "outgoing", detail: result.username || this.callDetail });
@@ -547,6 +604,13 @@ class Line {
         this._sendCall({ state: "incall", detail: "media updated" });
       }
     } else if (event === "updatingcall") {
+      if (this.callPhase === "absent") {
+        this.log("SIP updatingcall during absent — hangup");
+        this.manager.absentAnnounce?.cancel(this.nick, "updatingcall");
+        this._hangupSip();
+        this._resetCall();
+        return;
+      }
       // Remote re-INVITE — softphone must answer with type:update + answer jsep
       this.log("SIP updatingcall (remote re-INVITE)");
       /** @type {Record<string, unknown>} */
@@ -556,6 +620,9 @@ class Line {
     } else if (event === "hangup") {
       const reason = result.reason || (result.code != null ? String(result.code) : "");
       this.log(`remote hangup ${reason}`);
+      if (this.callPhase === "absent") {
+        this.manager.absentAnnounce?.cancel(this.nick, "remote hangup");
+      }
       this._resetCall();
       if (reason) {
         this._sendCall({ state: "idle", detail: reason });
@@ -567,25 +634,68 @@ class Line {
    * @param {object} result
    * @param {object | undefined} jsep
    */
-  _onIncoming(result, jsep) {
+  async _onIncoming(result, jsep) {
     if (this.callPhase !== "idle") {
       this.session?.sendMessageFire(this.handleId, { request: "decline", code: 486 });
       return;
     }
-    if (!this.softphoneWs || this.softphoneWs.readyState !== 1) {
-      this.log("incoming without softphone — 486");
-      this.session?.sendMessageFire(this.handleId, { request: "decline", code: 486 });
+
+    const softphoneOnline = Boolean(this.softphoneWs && this.softphoneWs.readyState === 1);
+    const caller = result.username || result.displayname || "unknown";
+
+    if (softphoneOnline) {
+      this.callPhase = "incoming";
+      this.caller = caller;
+      this.pendingIncomingJsep = jsep || null;
+      this._sendCall({ state: "incoming", caller });
+      /** @type {Record<string, unknown>} */
+      const payload = { type: "incoming", caller };
+      if (jsep) payload.jsep = jsep;
+      this._sendToSoftphone(payload);
       return;
     }
-    const caller = result.username || result.displayname || "unknown";
-    this.callPhase = "incoming";
-    this.caller = caller;
-    this.pendingIncomingJsep = jsep || null;
-    this._sendCall({ state: "incoming", caller });
-    /** @type {Record<string, unknown>} */
-    const payload = { type: "incoming", caller };
-    if (jsep) payload.jsep = jsep;
-    this._sendToSoftphone(payload);
+
+    // Softphone offline — optional absent announce
+    const sub = await this.manager.getSubscriber(this.nick);
+    if (sub) this.subscriber = sub;
+
+    if (sub?.absentAnnounce && jsep?.sdp && this.manager.absentAnnounce) {
+      this.callPhase = "absent";
+      this.caller = caller;
+      this.callDetail = "absent announce";
+      const taken = await this.manager.absentAnnounce.tryHandleIncoming({
+        nick: this.nick,
+        subscriber: sub,
+        softphoneOnline: false,
+        jsepOffer: jsep,
+        sendAccept: (answerJsep) => {
+          this.session?.sendMessageFire(
+            this.handleId,
+            { request: "accept", autoaccept_reinvites: false },
+            answerJsep,
+          );
+        },
+        sendHangup: () => this._hangupSip(),
+        sendTrickle: (candidate) => {
+          if (this.session && this.handleId) {
+            this.session.trickle(this.handleId, candidate);
+          }
+        },
+        onFinished: (reason) => this._onAbsentFinished(reason),
+      });
+      if (taken) {
+        this.log(`absent announce for ${caller}`);
+        return;
+      }
+      this.callPhase = "idle";
+      this.caller = "";
+      this.callDetail = "";
+    } else if (sub?.absentAnnounce && !jsep?.sdp) {
+      this.log("absentAnnounce on but no jsep — 486");
+    }
+
+    this.log("incoming without softphone — 486");
+    this.session?.sendMessageFire(this.handleId, { request: "decline", code: 486 });
   }
 
   /**

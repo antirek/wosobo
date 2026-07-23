@@ -47,7 +47,7 @@
 | Mute | **Локально** в softphone (`track.enabled`); в signaling не обязателен |
 | Закрытие вкладки / disconnect WSS | Отвязать UI-сессию; если был звонок → **hangup** на SIP handle; REGISTER **не** снимать |
 | Вторая вкладка | Ответ WS/HTTP **403/error `already_connected`** |
-| Входящий без softphone | `decline` с **code 486** (Busy Here) |
+| Входящий без softphone | `decline` **486**, или absent-announce если `absentAnnounce` (см. [`PLAN-absent-announce.md`](./PLAN-absent-announce.md)) |
 | Входящий + обрыв softphone во время ring | stop ringtone; decline/hangup best-effort; idle |
 | Sync admin → line manager | **Primary:** admin-api после CRUD шлёт `POST` на внутренний URL softphone-api. **Backup:** softphone-api poll Mongo каждые **3s** |
 | Always-on boot | На старте softphone-api: все `enabled` → handle + REGISTER. Не ждать первого login (S4 = сразу полный always-on) |

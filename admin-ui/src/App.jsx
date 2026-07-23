@@ -7,6 +7,7 @@ const EMPTY_FORM = {
   nick: "",
   displayName: "",
   enabled: true,
+  absentAnnounce: false,
   server: "asterisk",
   username: "",
   password: "",
@@ -83,6 +84,7 @@ export default function App() {
       nick: item.nick,
       displayName: item.displayName || "",
       enabled: item.enabled,
+      absentAnnounce: Boolean(item.absentAnnounce),
       server: item.sip?.server || "asterisk",
       username: item.sip?.username || "",
       password: "",
@@ -103,6 +105,7 @@ export default function App() {
       const body = {
         displayName: form.displayName || nick,
         enabled: Boolean(form.enabled),
+        absentAnnounce: Boolean(form.absentAnnounce),
         sip: {
           server: form.server.trim(),
           username: form.username.trim(),
@@ -272,6 +275,12 @@ export default function App() {
                     <span className={`badge ${uiOnline ? "on" : "off"}`}>
                       {uiOnline ? "online" : "offline"}
                     </span>
+                    {item.absentAnnounce ? (
+                      <>
+                        <br />
+                        <span className="hint">offline → announce</span>
+                      </>
+                    ) : null}
                   </td>
                   <td>
                     <div className="row">
@@ -372,6 +381,17 @@ export default function App() {
               >
                 <option value="1">да</option>
                 <option value="0">нет</option>
+              </select>
+            </label>
+            <label>
+              Offline → «абонент отсутствует»
+              <select
+                value={form.absentAnnounce ? "1" : "0"}
+                onChange={(e) => setForm((f) => ({ ...f, absentAnnounce: e.target.value === "1" }))}
+                disabled={busy}
+              >
+                <option value="0">нет (486)</option>
+                <option value="1">да (проиграть фразу)</option>
               </select>
             </label>
           </div>

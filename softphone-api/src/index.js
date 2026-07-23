@@ -5,6 +5,7 @@ import http from "http";
 import { MongoClient } from "mongodb";
 import { WebSocketServer } from "ws";
 import { LineManager } from "./lineManager.js";
+import { createAbsentAnnounceService } from "./absent/index.js";
 
 const PORT = Number(process.env.PORT || 3101);
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/janus_softphone";
@@ -15,6 +16,8 @@ const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3100")
 const JANUS_WS_URL = process.env.JANUS_WS_URL || "ws://127.0.0.1:8188";
 const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || "dev-internal-token";
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 24 * 60 * 60 * 1000);
+const ABSENT_ANNOUNCE_FILE = process.env.ABSENT_ANNOUNCE_FILE || "/app/media/absent.wav";
+const ABSENT_ANNOUNCE_MAX_SEC = Number(process.env.ABSENT_ANNOUNCE_MAX_SEC || 30);
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN.length === 1 ? CORS_ORIGIN[0] : CORS_ORIGIN }));
@@ -73,8 +76,15 @@ function requireInternal(req, res, next) {
   return next();
 }
 
+const absentAnnounce = createAbsentAnnounceService({
+  filePath: ABSENT_ANNOUNCE_FILE,
+  maxDurationMs: ABSENT_ANNOUNCE_MAX_SEC * 1000,
+  log: (line) => console.log(line),
+});
+
 const lineManager = new LineManager({
   janusWsUrl: JANUS_WS_URL,
+  absentAnnounce,
   async getSubscriber(nick) {
     const doc = await subscribers.findOne({ nick });
     if (!doc) return null;
@@ -82,6 +92,7 @@ const lineManager = new LineManager({
       nick: doc.nick,
       displayName: doc.displayName || doc.nick,
       enabled: Boolean(doc.enabled),
+      absentAnnounce: Boolean(doc.absentAnnounce),
       sip: doc.sip,
     };
   },
@@ -93,6 +104,7 @@ const lineManager = new LineManager({
         nick: d.nick,
         displayName: d.displayName || d.nick,
         enabled: true,
+        absentAnnounce: Boolean(d.absentAnnounce),
         sip: d.sip,
       }));
   },
@@ -232,6 +244,7 @@ server.listen(PORT, async () => {
   console.log(`softphone-api listening on :${PORT}`);
   console.log(`Janus WS: ${JANUS_WS_URL}`);
   console.log(`Session TTL: ${SESSION_TTL_MS}ms (Mongo softphone_sessions)`);
+  console.log(`Absent announce file: ${ABSENT_ANNOUNCE_FILE}`);
   try {
     await lineManager.boot();
   } catch (err) {

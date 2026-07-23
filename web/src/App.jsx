@@ -25,6 +25,7 @@ const CALL_LABELS = {
   incoming: "Входящий",
   incall: "Разговор",
   "reconnecting-media": "Восстановление медиа…",
+  absent: "Абонент отсутствует (авто)",
 };
 
 export default function App() {

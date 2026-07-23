@@ -9,6 +9,7 @@ export function toPublic(doc) {
     nick: doc.nick,
     displayName: doc.displayName || "",
     enabled: Boolean(doc.enabled),
+    absentAnnounce: Boolean(doc.absentAnnounce),
     sip: {
       server: sip.server || "",
       username: sip.username || "",
