@@ -16,7 +16,7 @@
 	# Частая ошибка: /api/manage/* → manage-api
 	redir /api/manage* /manage-api{uri} 308
 
-	# phone-server: HTTP API (demo session + health)
+	# phone-server: HTTP API (health + DELETE session)
 	handle /api/* {
 		reverse_proxy phone-server:3101
 	}
@@ -25,13 +25,26 @@
 		reverse_proxy phone-server:3102
 	}
 
-	# Softphone UI
-	redir /softphone /softphone/ 308
-	handle /softphone* {
+	# Host-backend demo (mint via MANAGE_API_TOKEN server-side)
+	redir /demo /demo/ 308
+	handle_path /demo* {
+		reverse_proxy softphone-demo:3130
+	}
+
+	# Embed script only (IIFE)
+	handle /embed/softphone.js {
+		header Cache-Control "no-cache"
 		root * /srv
-		try_files {path} /softphone/index.html
 		file_server
 	}
+	redir /embed /demo/ 308
+	redir /embed/ /demo/ 308
+	redir /embed/demo.html /demo/ 308
+
+	# Legacy softphone path → demo
+	redir /softphone /demo/ 308
+	redir /softphone/ /demo/ 308
+	redir /softphone/* /demo/ 308
 
 	# Manage UI
 	redir /manage /manage/ 308
@@ -50,11 +63,12 @@
 	handle / {
 		respond `Janus softphone stand
 
-		/softphone/ — softphone UI
+		/demo/ — host-backend softphone demo
+		/embed/softphone.js — embed script
 		/manage/ — manage UI
 		/monitor/ — Janus monitor
 		/manage-api/ — manage API
-		/api/ — phone-server HTTP (session/health)
+		/api/ — phone-server HTTP
 		/ws/ — phone-server WebSocket
 		` 200
 	}

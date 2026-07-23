@@ -256,7 +256,7 @@ export default function App() {
             </button>
             <a
               className="secondary"
-              href={`/softphone/`}
+              href={`/demo/`}
               target="_blank"
               rel="noreferrer"
             >

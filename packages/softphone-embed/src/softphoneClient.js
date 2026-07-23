@@ -1,4 +1,4 @@
-import { softphoneWsUrl } from "./api.js";
+import { softphoneWsUrl } from "./wsUrl.js";
 
 const PING_MS = 20_000;
 const ICE_DISCONNECT_MS = 5_000;
@@ -36,6 +36,7 @@ function jitteredDelay(ms) {
  * @param {{
  *   token: string,
  *   nick: string,
+ *   wsBase?: string,
  *   refreshSession?: () => Promise<string>,
  * }} opts
  * @param {{
@@ -300,7 +301,7 @@ export function connectSoftphone(opts, callbacks = {}) {
     if (localStream) return localStream;
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error(
-        "Микрофон недоступен: откройте softphone по https://service/softphone/ или http://localhost/softphone/ (нужен secure context)",
+        "Микрофон недоступен: откройте страницу по HTTPS (https://service/…) или http://localhost/… (нужен secure context)",
       );
     }
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -508,7 +509,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
     }
 
-    const url = softphoneWsUrl(currentToken, currentNick);
+    const url = softphoneWsUrl(currentToken, currentNick, opts.wsBase);
     log(`WS ${url.replace(/token=[^&]+/, "token=…")}`);
     const socket = new WebSocket(url);
     ws = socket;

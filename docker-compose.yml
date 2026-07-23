@@ -75,6 +75,18 @@ services:
       - janus
     restart: unless-stopped
 
+  # Example host app: mint session with MANAGE_API_TOKEN, serve demo UI
+  softphone-demo:
+    build: ./packages/softphone-demo
+    environment:
+      PORT: "3130"
+      MANAGE_API_URL: http://manage-api:3121
+      MANAGE_API_TOKEN: dev-manage-token
+      CORS_ORIGIN: https://service,http://localhost
+    depends_on:
+      - manage-api
+    restart: unless-stopped
+
   caddy:
     build:
       context: .
@@ -88,6 +100,7 @@ services:
       - phone-server
       - manage-api
       - monitor
+      - softphone-demo
     restart: unless-stopped
 
 volumes:

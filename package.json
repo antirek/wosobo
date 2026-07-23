@@ -9,10 +9,11 @@
   ],
   "scripts": {
     "dev:phone-server": "npm run dev -w @wosobo/phone-server",
-    "dev:softphone-web": "npm run dev -w @wosobo/softphone-web",
+    "dev:softphone-embed": "npm run build -w @wosobo/softphone-embed",
+    "dev:softphone-demo": "npm run start -w @wosobo/softphone-demo",
     "dev:manage-api": "npm run dev -w @wosobo/manage-api",
     "dev:manage-web": "npm run dev -w @wosobo/manage-web",
     "dev:monitor": "npm run start -w @wosobo/monitor",
-    "build:web": "npm run build -w @wosobo/softphone-web -w @wosobo/manage-web"
+    "build:web": "npm run build -w @wosobo/softphone-embed -w @wosobo/manage-web"
   }
 }
