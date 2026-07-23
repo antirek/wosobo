@@ -1,5 +1,5 @@
 {
-  "name": "janus-admin-api",
+  "name": "@wosobo/admin-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -1,0 +1,18 @@
+{
+  "name": "janus-sample",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:softphone-api": "npm run dev -w @wosobo/softphone-api",
+    "dev:softphone-web": "npm run dev -w @wosobo/softphone-web",
+    "dev:admin-api": "npm run dev -w @wosobo/admin-api",
+    "dev:admin-web": "npm run dev -w @wosobo/admin-web",
+    "dev:monitor": "npm run start -w @wosobo/monitor",
+    "build:web": "npm run build -w @wosobo/softphone-web -w @wosobo/admin-web"
+  }
+}

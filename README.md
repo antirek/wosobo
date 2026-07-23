@@ -2,7 +2,8 @@
 
 Админка заводит ники и SIP-привязку к PBX. Softphone — только звонки по нику, **без SIP-секретов** в браузере.
 
-План: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).  
+Monorepo: npm workspaces в `packages/` (`@wosobo/*`). План: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md).  
+План admin/softphone: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).  
 Анонс offline: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
 
 ## HTTP(S) через Caddy
@@ -66,7 +67,7 @@ docker-compose up -d --build
 2. Окно B: `bob` → звонок на `1001`
 3. На A: Принять / Отклонить
 
-После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Admin включено «Offline → абонент отсутствует») server-side проигрывается фраза из `softphone-api/media/absent.wav`, затем hangup.
+После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Admin включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/softphone-api/media/absent.wav`, затем hangup.
 
 ### Анонс «абонент отсутствует»
 

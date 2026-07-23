@@ -31,7 +31,7 @@
 | 3 | Опция | Только **per-subscriber** `absentAnnounce` в Mongo |
 | 4 | Default | `absentAnnounce: false` → сегодняшний 486 |
 | 5 | Файл фразы | Один wav на стенд; путь из env; в репо — сгенерированный sample |
-| 6 | Модульность | `softphone-api/src/absent/`; `LineManager` только policy + callbacks |
+| 6 | Модульность | `packages/softphone-api/src/absent/`; `LineManager` только policy + callbacks |
 | 7 | WebRTC stack | **`@roamhq/wrtc@0.10.0`** + base image **`node:22-bookworm-slim`** (нужен GLIBC≥2.34; alpine не подходит) |
 | 8 | Кодек | PCM из wav → `RTCAudioSource`; SDP/opus как получится с Janus (уточнить в A0) |
 | 9 | Concurrent | Один absent на линию; второй входящий → **486** |
@@ -86,7 +86,7 @@ freshSubscriber.absentAnnounce === true
 ## 4. Архитектура (модули)
 
 ```
-softphone-api/src/
+packages/softphone-api/src/
   lineManager.js
   absent/
     policy.js      # shouldAnnounce({ subscriber, softphoneOnline, jsepOffer })
@@ -219,10 +219,10 @@ LineManager при `janus === "trickle"` и `callPhase === "absent"` → `absent
 
 ## 5. Медиафайл
 
-- Путь в репо: `softphone-api/media/absent.wav`.
+- Путь в репо: `packages/softphone-api/media/absent.wav`.
 - MVP: **WAV PCM s16le**, mono, 16 kHz или 48 kHz (что удобнее для `RTCAudioSource`; зафиксировать в A0/`audioFile`).
 - Содержание: короткая фраза или явный тестовый тон 1–2 с + тишина; в README — как заменить файл.
-- Генерация sample: скрипт `softphone-api/scripts/gen-absent-wav.mjs` (или sox в docs) — **файл коммитится в git**, чтобы docker build не зависел от ручного шага.
+- Генерация sample: скрипт (или sox) — **файл коммитится в git**, чтобы docker build не зависел от ручного шага.
 - Нет файла / битый wav при incoming → **486** + `log error` (boot API не падает).
 
 ---

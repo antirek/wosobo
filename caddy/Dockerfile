@@ -1,15 +1,15 @@
 FROM node:22-alpine AS softphone-build
 WORKDIR /app
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-COPY web/ ./
+COPY packages/softphone-web/package.json ./
+RUN npm install
+COPY packages/softphone-web/ ./
 RUN npm run build
 
 FROM node:22-alpine AS admin-build
 WORKDIR /app
-COPY admin-ui/package.json admin-ui/package-lock.json ./
-RUN npm ci
-COPY admin-ui/ ./
+COPY packages/admin-web/package.json ./
+RUN npm install
+COPY packages/admin-web/ ./
 RUN npm run build
 
 FROM caddy:2.8-alpine

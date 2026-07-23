@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
 
   softphone-api:
-    build: ./softphone-api
+    build: ./packages/softphone-api
     environment:
       PORT: "3101"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
 
   admin-api:
-    build: ./admin-api
+    build: ./packages/admin-api
     environment:
       PORT: "3121"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
@@ -64,7 +64,7 @@ services:
     restart: unless-stopped
 
   monitor:
-    build: ./monitor
+    build: ./packages/monitor
     environment:
       PORT: "3110"
       JANUS_ADMIN_URL: http://janus:7088/admin

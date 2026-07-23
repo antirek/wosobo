@@ -1,5 +1,10 @@
 **/node_modules
 **/dist
 .git
-*.log
-.DS_Store
+packages/softphone-api
+packages/admin-api
+packages/monitor
+asterisk
+janus
+*.md
+package-lock.json

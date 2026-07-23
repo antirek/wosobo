@@ -1,5 +1,5 @@
 {
-  "name": "janus-softphone-api",
+  "name": "@wosobo/softphone-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,10 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
+    "@roamhq/wrtc": "^0.10.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "mongodb": "^6.12.0"
+    "mongodb": "^6.12.0",
+    "ws": "^8.18.0"
   }
 }
