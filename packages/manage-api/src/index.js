@@ -32,7 +32,7 @@ await seedSubscribers(subscribers);
 function basicAuth(req, res, next) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Basic ")) {
-    res.set("WWW-Authenticate", 'Basic realm="admin"');
+    res.set("WWW-Authenticate", 'Basic realm="manage"');
     return res.status(401).json({ error: "Требуется Basic auth" });
   }
   const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
@@ -40,7 +40,7 @@ function basicAuth(req, res, next) {
   const user = idx >= 0 ? decoded.slice(0, idx) : "";
   const pass = idx >= 0 ? decoded.slice(idx + 1) : "";
   if (user !== ADMIN_USER || pass !== ADMIN_PASSWORD) {
-    res.set("WWW-Authenticate", 'Basic realm="admin"');
+    res.set("WWW-Authenticate", 'Basic realm="manage"');
     return res.status(401).json({ error: "Неверный логин или пароль" });
   }
   return next();
@@ -109,16 +109,16 @@ function withRuntime(doc, runtime) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "admin-api" });
+  res.json({ ok: true, service: "manage-api" });
 });
 
-app.get("/api/admin/subscribers", basicAuth, async (_req, res) => {
+app.get("/api/manage/subscribers", basicAuth, async (_req, res) => {
   const docs = await subscribers.find({}).sort({ nick: 1 }).toArray();
   const statuses = await fetchLineStatuses();
   res.json({ items: docs.map((doc) => withRuntime(doc, statuses.get(doc.nick))) });
 });
 
-app.get("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
+app.get("/api/manage/subscribers/:nick", basicAuth, async (req, res) => {
   const nick = normalizeNick(req.params.nick);
   if (!isValidNick(nick)) {
     return res.status(400).json({ error: "Некорректный ник" });
@@ -131,7 +131,7 @@ app.get("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
   return res.json(withRuntime(doc, statuses.get(nick)));
 });
 
-app.put("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
+app.put("/api/manage/subscribers/:nick", basicAuth, async (req, res) => {
   const nick = normalizeNick(req.params.nick);
   if (!isValidNick(nick)) {
     return res.status(400).json({ error: "Некорректный ник (латиница, цифры, ._-, 1–32)" });
@@ -182,7 +182,7 @@ app.put("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
   return res.json(toPublic(doc));
 });
 
-app.patch("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
+app.patch("/api/manage/subscribers/:nick", basicAuth, async (req, res) => {
   const nick = normalizeNick(req.params.nick);
   if (!isValidNick(nick)) {
     return res.status(400).json({ error: "Некорректный ник" });
@@ -221,7 +221,7 @@ app.patch("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
   return res.json(toPublic(doc));
 });
 
-app.delete("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
+app.delete("/api/manage/subscribers/:nick", basicAuth, async (req, res) => {
   const nick = normalizeNick(req.params.nick);
   if (!isValidNick(nick)) {
     return res.status(400).json({ error: "Некорректный ник" });
@@ -235,6 +235,6 @@ app.delete("/api/admin/subscribers/:nick", basicAuth, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`admin-api listening on :${PORT}`);
+  console.log(`manage-api listening on :${PORT}`);
   notifyReconcile({ all: true });
 });

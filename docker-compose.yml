@@ -48,8 +48,8 @@ services:
       - janus
     restart: unless-stopped
 
-  admin-api:
-    build: ./packages/admin-api
+  manage-api:
+    build: ./packages/manage-api
     environment:
       PORT: "3121"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
@@ -84,7 +84,7 @@ services:
       - caddy_data:/data
     depends_on:
       - softphone-api
-      - admin-api
+      - manage-api
       - monitor
     restart: unless-stopped
 

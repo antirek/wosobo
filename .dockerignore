@@ -2,7 +2,7 @@
 **/dist
 .git
 packages/softphone-api
-packages/admin-api
+packages/manage-api
 packages/monitor
 asterisk
 janus

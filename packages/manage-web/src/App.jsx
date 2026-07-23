@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminFetch, normalizeNick } from "./api.js";
+import { manageFetch, normalizeNick } from "./api.js";
 
-const AUTH_KEY = "admin.basic";
+const AUTH_KEY = "manage.basic";
 
 const EMPTY_FORM = {
   nick: "",
@@ -24,7 +24,7 @@ export default function App() {
   const [editing, setEditing] = useState(null);
 
   const load = useCallback(async (u, p) => {
-    const data = await adminFetch(u, p, "/api/admin/subscribers");
+    const data = await manageFetch(u, p, "/api/manage/subscribers");
     setItems(data.items || []);
   }, []);
 
@@ -117,7 +117,7 @@ export default function App() {
       if (!editing && !form.password) {
         throw new Error("Для нового абонента нужен SIP password");
       }
-      await adminFetch(user, pass, `/api/admin/subscribers/${encodeURIComponent(nick)}`, {
+      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(nick)}`, {
         method: "PUT",
         body: JSON.stringify(body),
       });
@@ -134,7 +134,7 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
-      await adminFetch(user, pass, `/api/admin/subscribers/${encodeURIComponent(item.nick)}`, {
+      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
         method: "PATCH",
         body: JSON.stringify({ enabled: !item.enabled }),
       });
@@ -151,7 +151,7 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
-      await adminFetch(user, pass, `/api/admin/subscribers/${encodeURIComponent(item.nick)}`, {
+      await manageFetch(user, pass, `/api/manage/subscribers/${encodeURIComponent(item.nick)}`, {
         method: "DELETE",
       });
       await load(user, pass);
@@ -167,7 +167,7 @@ export default function App() {
     return (
       <div className="page">
         <header className="header">
-          <h1>Admin</h1>
+          <h1>Manage</h1>
           <p className="lede">Ники и SIP-привязки к PBX. Basic auth.</p>
         </header>
         <form className="card" onSubmit={onLogin}>
@@ -196,7 +196,7 @@ export default function App() {
   return (
     <div className="page">
       <header className="header">
-        <h1>Admin — абоненты</h1>
+        <h1>Manage — абоненты</h1>
         <p className="lede">SIP server — hostname с точки зрения Janus (на стенде: asterisk).</p>
         <div className="row" style={{ marginTop: "0.75rem" }}>
           <button type="button" className="secondary" onClick={() => load(user, pass)} disabled={busy}>

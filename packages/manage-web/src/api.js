@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_ADMIN_API_BASE || "/admin-api";
+const API_BASE = import.meta.env.VITE_MANAGE_API_BASE || "/manage-api";
 
 function authHeader(user, pass) {
   return `Basic ${btoa(`${user}:${pass}`)}`;
@@ -10,7 +10,7 @@ function authHeader(user, pass) {
  * @param {string} path
  * @param {RequestInit} [init]
  */
-export async function adminFetch(user, pass, path, init = {}) {
+export async function manageFetch(user, pass, path, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("Authorization", authHeader(user, pass));
   if (init.body && !headers.has("Content-Type")) {

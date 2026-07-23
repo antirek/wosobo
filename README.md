@@ -1,10 +1,19 @@
-# Janus SIP Softphone (admin + softphone split)
+# Janus SIP Softphone
 
-Админка заводит ники и SIP-привязку к PBX. Softphone — только звонки по нику, **без SIP-секретов** в браузере.
+## Цель
 
-Monorepo: npm workspaces в `packages/` (`@wosobo/*`). План: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md).  
-План admin/softphone: [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md).  
-Анонс offline: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
+Безопасно хранить **SIP-секреты** на сервере и безопасно пропускать медиа/сигналинг из **браузера на SIP PBX** — без паролей и прямого SIP в клиенте.
+
+WebRTC-клиент можно **встроить в любое приложение**. Приложение управляет подключениями через API:
+
+| API | Зачем |
+|-----|--------|
+| **manage-api** | учётные данные абонентов (ник ↔ SIP на PBX), опции (enabled, absent announce, …) |
+| **softphone-api** | сессии и звонки: REGISTER/линия, dial / accept / hangup, WSS-сигналинг, медиа через Janus |
+
+Браузерный softphone на стенде — пример такого клиента: логинится по **нику**, получает short-lived token, дальше только softphone-api. SIP password в браузер **не** попадает.
+
+Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
 
 ## HTTP(S) через Caddy
 
@@ -18,11 +27,11 @@ Monorepo: npm workspaces в `packages/` (`@wosobo/*`). План: [`PLAN-npm-work
 
 | URL | Куда |
 |-----|------|
-| https://service/softphone/ | softphone (рекомендуется) |
-| http://localhost/softphone/ | softphone (тоже OK: localhost = secure) |
-| https://service/admin/ | admin UI |
+| https://service/softphone/ | пример WebRTC-клиента |
+| http://localhost/softphone/ | то же (localhost = secure) |
+| https://service/manage/ | manage UI (поверх manage-api) |
 | https://service/monitor/ | monitor |
-| https://service/admin-api/… | admin-api |
+| https://service/manage-api/… | manage-api |
 | https://service/api/… , `/ws/…` | softphone-api |
 
 `http://service/...` **не** даёт микрофон в браузере — Caddy редиректит на HTTPS.
@@ -44,7 +53,7 @@ echo '127.0.0.1 service' | sudo tee -a /etc/hosts
 docker-compose up -d --build
 ```
 
-1. Admin: https://service/admin/ — Basic `admin` / `admin`
+1. Manage: https://service/manage/ — Basic `admin` / `admin`
 2. Softphone: https://service/softphone/ — `alice`
 3. Наберите `1000` (Playback) или `1004` (Echo)
 4. Monitor: https://service/monitor/
@@ -67,13 +76,13 @@ docker-compose up -d --build
 2. Окно B: `bob` → звонок на `1001`
 3. На A: Принять / Отклонить
 
-После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Admin включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/softphone-api/media/absent.wav`, затем hangup.
+После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Manage включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/softphone-api/media/absent.wav`, затем hangup.
 
 ### Анонс «абонент отсутствует»
 
 План: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
 
-1. Admin → абонент → «Offline → абонент отсутствует» = да.
+1. Manage → абонент → «Offline → абонент отсутствует» = да.
 2. Softphone этого ника **закрыть** (REGISTER останется).
 3. Позвонить на его extension с другого softphone.
 4. Слышен тон/фраза (~2 с), затем сброс.
@@ -87,9 +96,9 @@ docker-compose up -d --build
 | 1000 | Playback |
 | 1004 | Echo |
 
-SIP server в админке — hostname **с точки зрения Janus** (`asterisk` на стенде).
+SIP server в manage — hostname **с точки зрения Janus** (`asterisk` на стенде).
 
 ## API (кратко)
 
-- **admin-api** Basic: `CRUD /api/admin/subscribers`
-- **softphone-api**: `POST /api/session`, WSS `/ws/softphone?token=…`
+- **manage-api** — учётные данные и опции: Basic auth, `CRUD /api/manage/subscribers`
+- **softphone-api** — звонки: `POST /api/session` (ник → token), WSS `/ws/softphone?token=…` (dial / accept / hangup / trickle / update)

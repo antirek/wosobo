@@ -8,9 +8,9 @@
 (app) {
 	encode gzip
 
-	# More specific than /admin* — must come first
-	handle_path /admin-api* {
-		reverse_proxy admin-api:3121
+	# More specific than /manage* — must come first
+	handle_path /manage-api* {
+		reverse_proxy manage-api:3121
 	}
 
 	# softphone-api HTTP + WebSocket
@@ -29,11 +29,11 @@
 		file_server
 	}
 
-	# Admin UI
-	redir /admin /admin/ 308
-	handle /admin* {
+	# Manage UI
+	redir /manage /manage/ 308
+	handle /manage* {
 		root * /srv
-		try_files {path} /admin/index.html
+		try_files {path} /manage/index.html
 		file_server
 	}
 
@@ -47,9 +47,9 @@
 		respond `Janus softphone stand
 
 		/softphone/ — softphone UI
-		/admin/ — admin UI
+		/manage/ — manage UI
 		/monitor/ — Janus monitor
-		/admin-api/ — admin API
+		/manage-api/ — manage API
 		/api/ — softphone API
 		/ws/ — softphone signaling WS
 		` 200
