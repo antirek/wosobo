@@ -7,7 +7,7 @@ IMAGE="${IMAGE:-antirek/wosobo:0.0.2}"
 PUSH="${PUSH:-1}"
 
 echo "building ${IMAGE} (context: ${ROOT})..."
-docker build -f "${ROOT}/deploy/Dockerfile" -t "${IMAGE}" "${ROOT}"
+docker build -f "${ROOT}/prod_deploy/Dockerfile" -t "${IMAGE}" "${ROOT}"
 
 if [ "${PUSH}" = "1" ]; then
   echo "pushing ${IMAGE}..."

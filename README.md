@@ -49,12 +49,14 @@ WebRTC-клиент можно **встроить в любое приложен
 
 TLS: внутренний сертификат Caddy (`tls internal`). В браузере один раз принять предупреждение о сертификате.
 
-## Быстрый старт
+## Быстрый старт (локально)
 
 ```bash
 echo '127.0.0.1 service' | sudo tee -a /etc/hosts
-docker-compose up -d --build
+docker compose -f dev_local/docker-compose.yml up -d --build
 ```
+
+Конфиги стенда: [`dev_local/`](./dev_local/) (`asterisk/`, `caddy/`, `janus/`).
 
 1. Manage: https://service/manage/ — API token `dev-manage-token`
 2. Demo: https://service/demo/ — введите ник (`alice`) → backend минтает session → floating виджет
@@ -62,7 +64,7 @@ docker-compose up -d --build
 4. Monitor: https://service/monitor/
 5. OpenAPI: https://service/manage-api/api/manage/docs
 
-После правок UI/embed: `docker-compose up -d --build static softphone-demo`
+После правок UI/embed: `docker compose -f dev_local/docker-compose.yml up -d --build static softphone-demo`
 
 ### Host backend demo
 
@@ -149,6 +151,6 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 - **embed** — `GET /embed/softphone.js` → `WosoboSoftphone.mount({ token, nick })`
 - **softphone-demo** — пример host: `POST /demo/session` (mint через manage token)
 
-## Deploy
+## Deploy (production)
 
-Шаблон: [`deploy/`](./deploy/) — образ **`wosobo`** (apps + static embed/manage) и compose с Mongo / Asterisk / Janus / Caddy (proxy-only). См. [`deploy/README.md`](./deploy/README.md).
+Шаблон: [`prod_deploy/`](./prod_deploy/) — образ **`wosobo`**, compose без тестового Asterisk (внешняя PBX). Локальный стенд: [`dev_local/`](./dev_local/). См. [`prod_deploy/README.md`](./prod_deploy/README.md).

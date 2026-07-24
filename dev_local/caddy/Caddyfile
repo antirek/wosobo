@@ -1,0 +1,75 @@
+# Front door: reverse-proxy only (no static root).
+# Static (embed + manage UI) → static:3140 (@wosobo/static-server).
+# /etc/hosts: 127.0.0.1 service
+# Also: http://localhost/... (localhost is a secure context on HTTP)
+{
+	local_certs
+}
+
+(app) {
+	encode gzip
+
+	handle_path /manage-api* {
+		reverse_proxy manage-api:3121
+	}
+
+	redir /api/manage* /manage-api{uri} 308
+
+	handle /api/* {
+		reverse_proxy phone-server:3101
+	}
+	handle /ws/* {
+		reverse_proxy phone-server:3102
+	}
+
+	redir /demo /demo/ 308
+	handle_path /demo* {
+		reverse_proxy softphone-demo:3130
+	}
+
+	handle /embed/softphone.js {
+		reverse_proxy static:3140
+	}
+	handle /embed/softphone.js.map {
+		reverse_proxy static:3140
+	}
+	redir /embed /demo/ 308
+	redir /embed/ /demo/ 308
+	redir /embed/demo.html /demo/ 308
+
+	redir /softphone /demo/ 308
+	redir /softphone/ /demo/ 308
+	redir /softphone/* /demo/ 308
+
+	redir /manage /manage/ 308
+	handle /manage* {
+		reverse_proxy static:3140
+	}
+
+	redir /monitor /monitor/ 308
+	handle_path /monitor/* {
+		reverse_proxy monitor:3110
+	}
+
+	handle / {
+		respond `Wosobo softphone stand
+
+		/demo/ — host-backend softphone demo
+		/embed/softphone.js — embed script
+		/manage/ — manage UI
+		/monitor/ — Janus monitor
+		/manage-api/ — manage API
+		/api/ — phone-server HTTP
+		/ws/ — phone-server WebSocket
+		` 200
+	}
+}
+
+service {
+	tls internal
+	import app
+}
+
+http://localhost {
+	import app
+}

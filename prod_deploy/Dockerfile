@@ -1,6 +1,6 @@
 # Wosobo app image: phone-server + manage-api + monitor + softphone-demo + static
 # Build from repo root:
-#   docker build -f deploy/Dockerfile -t wosobo:latest .
+#   docker build -f prod_deploy/Dockerfile -t wosobo:latest .
 
 # --- frontend builds ---
 FROM node:22-alpine AS embed-build
@@ -60,8 +60,8 @@ COPY packages/static-server/package.json ./
 RUN npm install --omit=dev
 COPY packages/static-server/src ./src
 
-COPY deploy/supervisord.conf /etc/supervisor/supervisord.conf
-COPY deploy/entrypoint.sh /entrypoint.sh
+COPY prod_deploy/supervisord.conf /etc/supervisor/supervisord.conf
+COPY prod_deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENV ABSENT_ANNOUNCE_FILE=/opt/wosobo/phone-server/media/absent.wav

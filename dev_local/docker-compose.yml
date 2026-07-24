@@ -33,9 +33,8 @@ services:
       - asterisk
     restart: unless-stopped
 
-  # HTTP API :3101 (internal + demo /api via Caddy), WebSocket :3102 (external /ws via Caddy)
   phone-server:
-    build: ./packages/phone-server
+    build: ../packages/phone-server
     environment:
       PORT: "3101"
       WS_PORT: "3102"
@@ -51,7 +50,7 @@ services:
     restart: unless-stopped
 
   manage-api:
-    build: ./packages/manage-api
+    build: ../packages/manage-api
     environment:
       PORT: "3121"
       MONGODB_URI: mongodb://mongo:27017/janus_softphone
@@ -66,7 +65,7 @@ services:
     restart: unless-stopped
 
   monitor:
-    build: ./packages/monitor
+    build: ../packages/monitor
     environment:
       PORT: "3110"
       JANUS_ADMIN_URL: http://janus:7088/admin
@@ -75,9 +74,8 @@ services:
       - janus
     restart: unless-stopped
 
-  # Example host app: mint session with MANAGE_API_TOKEN, serve demo UI
   softphone-demo:
-    build: ./packages/softphone-demo
+    build: ../packages/softphone-demo
     environment:
       PORT: "3130"
       MANAGE_API_URL: http://manage-api:3121
@@ -87,17 +85,15 @@ services:
       - manage-api
     restart: unless-stopped
 
-  # embed + manage UI (same role as static-server inside deploy wosobo image)
   static:
     build:
-      context: .
+      context: ..
       dockerfile: packages/static-server/Dockerfile
     environment:
       PORT: "3140"
       STATIC_ROOT: /srv
     restart: unless-stopped
 
-  # Same as deploy: stock Caddy image, proxy-only Caddyfile
   caddy:
     image: caddy:2.8-alpine
     ports:

@@ -1,7 +1,7 @@
 **/node_modules
 **/dist
 .git
-asterisk
-janus
+dev_local
+prod_deploy/janus
 *.md
 package-lock.json
