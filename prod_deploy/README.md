@@ -37,6 +37,8 @@ cd result && docker-compose up -d
 | **MANAGE_API_TOKEN** | нет* | Bearer manage-api / mint. Пусто → сгенерирует configure. |
 | **INTERNAL_TOKEN** | нет* | Секрет manage-api ↔ phone-server. |
 | **JANUS_ADMIN_SECRET** | нет* | Admin API Janus (monitor). |
+| **MONITOR_USER** | нет | Логин Caddy basic auth для `/monitor/` (по умолчанию `monitor`). |
+| **MONITOR_PASSWORD** | нет* | Пароль `/monitor/`. Пусто → сгенерирует configure (см. SUMMARY). |
 | **WOSOBO_IMAGE** | нет | Тег образа ([`../build/`](../build/)). |
 | **CADDY_IMAGE** | нет | Образ Caddy. |
 | **HTTP_PORT** / **HTTPS_PORT** | нет | Порты Caddy на хост. |
@@ -77,7 +79,7 @@ cd result && docker-compose up -d
 | `janus` | WebRTC ↔ SIP |
 | `caddy` | HTTPS front |
 
-URL: `/manage/`, `/demo/`, `/embed/softphone.js`, `/monitor/`, `/manage-api/`.
+URL: `/manage/`, `/demo/`, `/embed/softphone.js`, `/monitor/` (basic auth), `/manage-api/`.
 
 ## Чеклист
 

@@ -59,6 +59,8 @@ rand_hex() {
 MANAGE_API_TOKEN="${MANAGE_API_TOKEN:-$(rand_hex)}"
 INTERNAL_TOKEN="${INTERNAL_TOKEN:-$(rand_hex)}"
 JANUS_ADMIN_SECRET="${JANUS_ADMIN_SECRET:-$(rand_hex)}"
+MONITOR_USER="${MONITOR_USER:-monitor}"
+MONITOR_PASSWORD="${MONITOR_PASSWORD:-$(rand_hex)}"
 
 WOSOBO_IMAGE="${WOSOBO_IMAGE:-antirek/wosobo:latest}"
 CADDY_IMAGE="${CADDY_IMAGE:-caddy:2.8-alpine}"
@@ -70,6 +72,31 @@ JANUS_BEHIND_NAT="${JANUS_BEHIND_NAT:-false}"
 ABSENT_ANNOUNCE_MAX_SEC="${ABSENT_ANNOUNCE_MAX_SEC:-30}"
 CALL_CDR_TTL_SEC="${CALL_CDR_TTL_SEC:-172800}"
 CORS_EXTRA="${CORS_EXTRA:-}"
+
+case "$MONITOR_USER" in
+  ""|*[!A-Za-z0-9._-]*) die "MONITOR_USER must be non-empty alphanumeric (got: ${MONITOR_USER})" ;;
+esac
+
+# Caddy basicauth needs bcrypt (caddy hash-password / bcrypt).
+# Do NOT escape $ as $$ — Caddy 2.8 keeps $2a$… bcrypt hashes literal; $$ breaks auth.
+hash_monitor_password() {
+  raw=""
+  if command -v docker >/dev/null 2>&1; then
+    raw=$(docker run --rm -e PASSWORD="$MONITOR_PASSWORD" "$CADDY_IMAGE" \
+      sh -c 'caddy hash-password --plaintext "$PASSWORD"') \
+      || die "failed to hash MONITOR_PASSWORD via docker ($CADDY_IMAGE)"
+  elif python3 -c 'import bcrypt' 2>/dev/null; then
+    raw=$(MONITOR_PASSWORD="$MONITOR_PASSWORD" python3 -c \
+      'import os,bcrypt; print(bcrypt.hashpw(os.environ["MONITOR_PASSWORD"].encode(), bcrypt.gensalt(rounds=14)).decode())') \
+      || die "failed to hash MONITOR_PASSWORD via python bcrypt"
+  else
+    die "need docker ($CADDY_IMAGE) or python3+bcrypt to hash MONITOR_PASSWORD"
+  fi
+  raw=$(printf '%s' "$raw" | tr -d '\r\n')
+  [ -n "$raw" ] || die "empty password hash"
+  printf '%s' "$raw"
+}
+MONITOR_PASSWORD_HASH="$(hash_monitor_password)"
 
 case "$TLS_MODE" in
   off) PUBLIC_ORIGIN="http://${DOMAIN}" ;;
@@ -105,6 +132,8 @@ export TPL_CORS_ORIGIN="$CORS_ORIGIN"
 export TPL_MANAGE_API_TOKEN="$MANAGE_API_TOKEN"
 export TPL_INTERNAL_TOKEN="$INTERNAL_TOKEN"
 export TPL_JANUS_ADMIN_SECRET="$JANUS_ADMIN_SECRET"
+export TPL_MONITOR_USER="$MONITOR_USER"
+export TPL_MONITOR_PASSWORD_HASH="$MONITOR_PASSWORD_HASH"
 export TPL_WOSOBO_IMAGE="$WOSOBO_IMAGE"
 export TPL_CADDY_IMAGE="$CADDY_IMAGE"
 export TPL_HTTP_PORT="$HTTP_PORT"
@@ -165,6 +194,10 @@ JANUS RTP UDP: ${JANUS_RTP_START}-${JANUS_RTP_END} → host (forward from PBX/In
 MANAGE_API_TOKEN=$MANAGE_API_TOKEN
 INTERNAL_TOKEN=$INTERNAL_TOKEN
 JANUS_ADMIN_SECRET=$JANUS_ADMIN_SECRET
+
+Monitor UI basic auth (${PUBLIC_ORIGIN}/monitor/):
+  user=$MONITOR_USER
+  password=$MONITOR_PASSWORD
 
 Deploy this directory (result/) to the server, then:
 

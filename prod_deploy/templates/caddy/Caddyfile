@@ -45,6 +45,9 @@ __CADDY_GLOBAL__
 
 	redir /monitor /monitor/ 308
 	handle_path /monitor/* {
+		basic_auth {
+			__MONITOR_USER__ "__MONITOR_PASSWORD_HASH__"
+		}
 		reverse_proxy monitor:3110
 	}
 
