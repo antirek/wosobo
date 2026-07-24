@@ -1,53 +1,64 @@
-# Janus SIP Softphone
+# Wosobo — WebRTC softphone к SIP PBX
 
-## Цель
+Серверный softphone-шлюз: браузер звонит через WebRTC, SIP-секреты и REGISTER остаются на сервере. Виджет встраивается в любое HTTPS-приложение; учёт абонентов и сессии — через Manage API.
 
-Безопасно хранить **SIP-секреты** на сервере и безопасно пропускать медиа/сигналинг из **браузера на SIP PBX** — без паролей и прямого SIP в клиенте.
+Подробная интеграция для внешней системы: [`docs/INTEGRATION.md`](./docs/INTEGRATION.md).
 
-WebRTC-клиент можно **встроить в любое приложение**. Приложение управляет подключениями через API:
+## Как это работает
 
-| API | Зачем |
-|-----|--------|
-| **manage-api** | учётные данные абонентов (ник ↔ SIP на PBX), опции (enabled, absent announce, …) |
-| **phone-server** | REGISTER/линия; **HTTP API** (session/internal) + **WebSocket** сигналинг; медиа через Janus |
+```mermaid
+flowchart LR
+  subgraph Client
+    App[Ваше приложение]
+    Widget[softphone.js]
+  end
 
-Клиент: embed-скрипт [`@wosobo/softphone-embed`](./packages/softphone-embed/) — short-lived token через **manage mint**, дальше WSS. SIP password в браузер **не** попадает.
+  subgraph Wosobo
+    MA[manage-api]
+    PS[phone-server]
+    Janus[Janus SIP]
+  end
 
-Стенд: monorepo npm workspaces (`packages/`, `@wosobo/*`). Планы: [`PLAN-npm-workspaces.md`](./PLAN-npm-workspaces.md), [`PLAN-admin-softphone-split.md`](./PLAN-admin-softphone-split.md), [`PLAN-absent-announce.md`](./PLAN-absent-announce.md), [`PLAN-manage-openapi.md`](./PLAN-manage-openapi.md), [`PLAN-softphone-embed.md`](./PLAN-softphone-embed.md).
+  PBX[SIP PBX]
 
-## HTTP(S) через Caddy
-
-Все UI/API — за Caddy. Softphone нужен **secure context** для `getUserMedia` → используйте **HTTPS** или `localhost`.
-
-В `/etc/hosts`:
-
-```text
-127.0.0.1  service
+  App -->|mint session<br/>MANAGE_API_TOKEN| MA
+  App -->|token + nick| Widget
+  Widget <-->|WSS сигналинг| PS
+  Widget <-->|UDP WebRTC| Janus
+  PS <-->|Janus WS| Janus
+  Janus <-->|SIP / RTP| PBX
+  MA -->|абоненты, reconcile| PS
 ```
 
-| URL | Куда |
-|-----|------|
-| https://service/demo/ | host-backend demo (ник → mint → mount) |
-| https://service/embed/softphone.js | IIFE `WosoboSoftphone` |
-| https://service/manage/ | manage UI (абоненты + звонки) |
-| https://service/monitor/ | monitor |
-| https://service/manage-api/… | manage-api |
-| https://service/api/… | phone-server HTTP (health; DELETE session) |
-| https://service/ws/… | phone-server WebSocket (сигналинг) |
+1. В Manage задаёте **ник ↔ SIP** на вашей АТС (пароль только на сервере).
+2. Ваш backend минтает короткоживущий **session token**.
+3. Страница грузит `/embed/softphone.js` и вызывает `WosoboSoftphone.mount({ token, nick })`.
+4. Сигналинг — WSS к phone-server; медиа — WebRTC ↔ Janus ↔ SIP/RTP на PBX.
+5. Закрытие вкладки **не** снимает SIP REGISTER (always-on линия).
 
-`/softphone/` и `/embed/demo.html` редиректят на `/demo/`.
+## Ключевые возможности
 
-`http://service/...` **не** даёт микрофон в браузере — Caddy редиректит на HTTPS.
+- **SIP-секреты не в браузере** — только ник и session token
+- **Встраиваемый виджет** — IIFE `WosoboSoftphone` для любой host-страницы
+- **Manage API + UI** — CRUD абонентов, mint session, журнал звонков (CDR), OpenAPI
+- **Always-on REGISTER** — линия на АТС живёт без открытого softphone
+- **Absent announce** — офлайн softphone может ответить фразой вместо 486
+- **Janus Monitor** — кто REGISTER’нут и какие разговоры идут
+- **Prod-пакет** — образ `wosobo` + `prod_deploy/` (Caddy, Janus, compose)
 
-Наружу (кроме Caddy):
+## Скриншоты
 
-| Порт | Зачем |
-|------|--------|
-| `:80`, `:443` | Caddy |
-| `5060`, `10000–10099/udp` | Asterisk SIP/RTP |
-| `20000–20100/udp` | Janus WebRTC media |
+### Manage (админка абонентов)
 
-TLS: внутренний сертификат Caddy (`tls internal`). В браузере один раз принять предупреждение о сертификате.
+![Manage UI](./images/manage.png)
+
+### Softphone (embed-виджет)
+
+![Softphone embed](./images/softphone.png)
+
+### Janus Monitor
+
+![Janus Monitor](./images/monitor.png)
 
 ## Быстрый старт (локально)
 
@@ -56,105 +67,39 @@ echo '127.0.0.1 service' | sudo tee -a /etc/hosts
 docker compose -f dev_local/docker-compose.yml up -d --build
 ```
 
-Конфиги стенда: [`dev_local/`](./dev_local/) (`asterisk/`, `caddy/`, `janus/`).
+| URL | Что |
+|-----|-----|
+| https://service/manage/ | Manage UI — token `dev-manage-token` |
+| https://service/demo/ | Demo: ник → mint → виджет |
+| https://service/monitor/ | Janus Monitor |
+| https://service/embed/softphone.js | Скрипт встройки |
+| https://service/manage-api/api/manage/docs | OpenAPI |
 
-1. Manage: https://service/manage/ — API token `dev-manage-token`
-2. Demo: https://service/demo/ — введите ник (`alice`) → backend минтает session → floating виджет
-3. Наберите `1000` (Playback) или `1004` (Echo); лог — кнопка **Лог** в виджете
-4. Monitor: https://service/monitor/
-5. OpenAPI: https://service/manage-api/api/manage/docs
+TLS: внутренний сертификат Caddy — один раз принять предупреждение в браузере. Softphone нужен **HTTPS** (или localhost) для микрофона.
 
-После правок UI/embed: `docker compose -f dev_local/docker-compose.yml up -d --build static softphone-demo`
+Тестовые extensions Asterisk: `1001` alice, `1002` bob, `1000` Playback, `1004` Echo.
 
-### Host backend demo
-
-Пакет [`packages/softphone-demo`](./packages/softphone-demo/) — пример вашего backend:
-
-```text
-UI (ник) → POST /demo/session → manage-api mint (MANAGE_API_TOKEN на сервере) → mount
-```
+### Mint и embed (кратко)
 
 ```bash
+# host backend (пример)
 curl -sk -X POST -H "Content-Type: application/json" \
   https://service/demo/session -d '{"nick":"alice"}'
 ```
 
-### Embed в свою страницу
-
 ```html
 <script src="https://service/embed/softphone.js"></script>
 <script>
-  WosoboSoftphone.mount({
-    token: "...", // с вашего backend (manage mint)
-    nick: "alice",
-    onLine(status, detail) {},
-    onCall(state, detail) {},
-    onError(err) {},
-  });
-  // WosoboSoftphone.unmount();
+  WosoboSoftphone.mount({ token: "...", nick: "alice" });
 </script>
 ```
 
-### Mint session (host backend)
+## Каталоги
 
-```bash
-curl -sk -X POST \
-  -H "Authorization: Bearer dev-manage-token" \
-  -H "Content-Type: application/json" \
-  https://service/manage-api/api/manage/subscribers/alice/session \
-  -d '{"ttlSec":86400}'
-# → { "token", "nick", "expiresAt" }
-```
-
-### Реконнект (smoke)
-
-План: [`PLAN-reconnect.md`](./PLAN-reconnect.md).
-
-1. Softphone online (статус «На линии»).
-2. DevTools → Network → **Offline** на 10–30 с → снова Online.
-3. Ожидание: статус «Переподключение…», затем снова Registered.
-4. In-call (Echo `1004`), краткий offline: ICE restart → снова разговор.
-5. Unmount → **не** должен авто-подключаться.
-
-### Входящий
-
-1. Окно A: alice (demo Mount)
-2. Окно B: bob → звонок на `1001`
-3. На A: Принять / Отклонить
-
-После закрытия softphone REGISTER на PBX **остаётся** (always-on). Без softphone входящие → **486**, либо (если в Manage включено «Offline → абонент отсутствует») server-side проигрывается фраза из `packages/phone-server/media/absent.wav`, затем hangup.
-
-### Анонс «абонент отсутствует»
-
-План: [`PLAN-absent-announce.md`](./PLAN-absent-announce.md).
-
-1. Manage → абонент → «Offline → абонент отсутствует» = да.
-2. Softphone этого ника **закрыть** (REGISTER останется).
-3. Позвонить на его extension с другого softphone.
-4. Слышен тон/фраза (~2 с), затем сброс.
-
-## Тестовые extensions Asterisk
-
-| Ext | Действие |
-|-----|----------|
-| 1001 / pass1001 | alice |
-| 1002 / pass1002 | bob |
-| 1000 | Playback |
-| 1004 | Echo |
-
-SIP server в manage — hostname **с точки зрения Janus** (`asterisk` на стенде).
-
-## API (кратко)
-
-- **manage-api** — Bearer `MANAGE_API_TOKEN`, `CRUD /api/manage/subscribers`, mint `POST /api/manage/subscribers/{nick}/session`, CDR `GET /api/manage/calls`, docs `/api/manage/docs`
-- **phone-server** — HTTP `:3101` (`DELETE /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…&nick=…`)
-- **embed** — `GET /embed/softphone.js` → `WosoboSoftphone.mount({ token, nick })`
-- **softphone-demo** — пример host: `POST /demo/session` (mint через manage token)
-
-## Build / Deploy
-
-| Каталог | Назначение |
-|---------|------------|
-| [`build/`](./build/) | Сборка Docker-образа **`wosobo`** (`./build/build.sh`) |
-| [`prod_deploy/`](./prod_deploy/) | Установка на сервер: `install.env` → `configure.sh` → compose |
-| [`dev_local/`](./dev_local/) | Локальный стенд с тестовым Asterisk |
+| Путь | Назначение |
+|------|------------|
+| [`docs/INTEGRATION.md`](./docs/INTEGRATION.md) | Контракты API, auth, встройка для интеграторов |
+| [`dev_local/`](./dev_local/) | Локальный стенд (Asterisk + Janus + Caddy) |
+| [`build/`](./build/) | Сборка образа `wosobo` |
+| [`prod_deploy/`](./prod_deploy/) | Prod: `install.env` → `configure.sh` → `result/` |
+| [`packages/`](./packages/) | manage-api, phone-server, softphone-embed, … |
