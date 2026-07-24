@@ -3,7 +3,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-IMAGE="${IMAGE:-antirek/wosobo:0.0.4}"
+IMAGE="${IMAGE:-antirek/wosobo:0.0.5}"
 PUSH="${PUSH:-1}"
 
 echo "building ${IMAGE} (context: ${ROOT})..."
