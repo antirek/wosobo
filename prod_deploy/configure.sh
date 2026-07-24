@@ -30,6 +30,21 @@ esac
 case "${TLS_MODE}" in
   auto)
     [ -n "${TLS_EMAIL:-}" ] || die "TLS_EMAIL is required when TLS_MODE=auto"
+    case "$TLS_EMAIL" in
+      *@*) ;;
+      *) die "TLS_EMAIL must be an email address (got: $TLS_EMAIL)" ;;
+    esac
+    # Let's Encrypt rejects contacts on reserved TLDs (.local, .test, …)
+    email_domain="${TLS_EMAIL##*@}"
+    case "$email_domain" in
+      *.*) ;;
+      *) die "TLS_EMAIL domain looks invalid: $email_domain" ;;
+    esac
+    case "$email_domain" in
+      *.local|*.test|*.invalid|*.localhost|*.example|local|test|invalid|localhost|example)
+        die "TLS_EMAIL=$TLS_EMAIL — Let's Encrypt rejects this contact domain; use a real mailbox (e.g. ops@mobilon.ru)"
+        ;;
+    esac
     ;;
 esac
 

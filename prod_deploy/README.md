@@ -33,7 +33,7 @@ cd result && docker-compose up -d
 | **DOMAIN** | да | Публичное DNS-имя. Браузер: `https://DOMAIN/…`. Softphone — HTTPS (или localhost). |
 | **PUBLIC_IP** | да | IP для RTP с точки зрения внешней PBX (`sdp_ip`). Обычно белый IP / DNAT. |
 | **TLS_MODE** | да | `auto` — Let's Encrypt; `internal` — самоподписанный; `off` — HTTP only. |
-| **TLS_EMAIL** | при `auto` | Email для ACME. |
+| **TLS_EMAIL** | при `auto` | Email для ACME (Let's Encrypt). Нужен **реальный** ящик с публичным TLD — не `@test.local` / `@example.com` (LE ответит `invalidContact`). |
 | **MANAGE_API_TOKEN** | нет* | Bearer manage-api / mint. Пусто → сгенерирует configure. |
 | **INTERNAL_TOKEN** | нет* | Секрет manage-api ↔ phone-server. |
 | **JANUS_ADMIN_SECRET** | нет* | Admin API Janus (monitor). |
