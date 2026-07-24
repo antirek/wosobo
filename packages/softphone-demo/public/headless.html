@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wosobo Softphone — headless smoke</title>
+    <style>
+      :root {
+        font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+        color: #1a242c;
+        background: #e8eef2;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem 1.25rem 3rem;
+        max-width: 720px;
+      }
+      h1 {
+        font-size: 1.35rem;
+        margin: 0 0 0.35rem;
+      }
+      .lede {
+        color: #5a6b76;
+        margin: 0 0 1rem;
+      }
+      .card {
+        background: #f7fafc;
+        border: 1px solid #c5d2db;
+        border-radius: 12px;
+        padding: 1rem 1.1rem;
+        display: grid;
+        gap: 0.65rem;
+      }
+      label {
+        display: grid;
+        gap: 0.3rem;
+        font-size: 0.9rem;
+      }
+      input {
+        font: inherit;
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #c5d2db;
+        border-radius: 8px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        border: 1px solid #0f6e56;
+        background: #0f6e56;
+        color: #fff;
+        padding: 0.5rem 0.8rem;
+        border-radius: 8px;
+      }
+      button.secondary {
+        background: #fff;
+        color: #1a242c;
+        border-color: #c5d2db;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      pre {
+        margin: 0;
+        padding: 0.75rem;
+        background: #1a242c;
+        color: #d7e2ea;
+        border-radius: 8px;
+        font-size: 12px;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .state {
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+        color: #334;
+      }
+      a {
+        color: #0f6e56;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Headless softphone (smoke)</h1>
+    <p class="lede">
+      Отладочная страница без floating UI. Product UI — у host (например Bitrix).
+      Виджет: <a href="/demo/">/demo/</a> · скрипт:
+      <code>/embed/softphone-headless.js</code>
+    </p>
+
+    <div class="card">
+      <label>
+        Ник
+        <input id="nick" value="alice" autocomplete="username" />
+      </label>
+      <label>
+        Номер
+        <input id="number" value="1004" />
+      </label>
+      <div class="row">
+        <button type="button" id="btnConnect">Connect</button>
+        <button type="button" class="secondary" id="btnDisconnect">Disconnect</button>
+        <button type="button" id="btnDial">Dial</button>
+        <button type="button" id="btnAccept">Accept</button>
+        <button type="button" class="secondary" id="btnDecline">Decline</button>
+        <button type="button" class="secondary" id="btnHangup">Hangup</button>
+        <button type="button" class="secondary" id="btnMute">Mute</button>
+      </div>
+      <div class="state" id="state">state: —</div>
+      <pre id="log"></pre>
+    </div>
+
+    <script src="/embed/softphone-headless.js"></script>
+    <script>
+      const logEl = document.getElementById("log");
+      const stateEl = document.getElementById("state");
+      /** @type {ReturnType<typeof WosoboSoftphoneHeadless.connect> | null} */
+      let phone = null;
+      let muted = false;
+
+      function log(line) {
+        const t = new Date().toLocaleTimeString();
+        logEl.textContent += `[${t}] ${line}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function refreshState() {
+        if (!phone) {
+          stateEl.textContent = "state: disconnected";
+          return;
+        }
+        stateEl.textContent = "state: " + JSON.stringify(phone.getState());
+      }
+
+      document.getElementById("btnConnect").onclick = async () => {
+        const nick = document.getElementById("nick").value.trim();
+        try {
+          const res = await fetch("/demo/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nick }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "mint " + res.status);
+          phone = WosoboSoftphoneHeadless.connect({
+            token: data.token,
+            nick: data.nick,
+            onReady() {
+              log("ready " + WosoboSoftphoneHeadless.version);
+              refreshState();
+            },
+            onLine(status, detail) {
+              log("line " + status + (detail ? " " + detail : ""));
+              refreshState();
+            },
+            onCall(state, detail, caller) {
+              log("call " + state + (detail ? " " + detail : "") + (caller ? " " + caller : ""));
+              refreshState();
+            },
+            onIncoming(caller) {
+              log("incoming " + caller);
+              refreshState();
+            },
+            onAuthLost() {
+              log("auth lost — mint again");
+              phone = null;
+              refreshState();
+            },
+            onError(err) {
+              log("error " + (err.message || err));
+            },
+            onLog(line) {
+              log(line);
+            },
+          });
+        } catch (err) {
+          log("connect failed: " + (err.message || err));
+        }
+      };
+
+      document.getElementById("btnDisconnect").onclick = () => {
+        phone?.disconnect();
+        phone = null;
+        log("disconnect");
+        refreshState();
+      };
+
+      document.getElementById("btnDial").onclick = async () => {
+        try {
+          await phone?.dial(document.getElementById("number").value);
+          log("dial sent");
+        } catch (err) {
+          log("dial reject: " + (err.message || err));
+        }
+        refreshState();
+      };
+
+      document.getElementById("btnAccept").onclick = async () => {
+        try {
+          await phone?.accept();
+          log("accept sent");
+        } catch (err) {
+          log("accept reject: " + (err.message || err));
+        }
+        refreshState();
+      };
+
+      document.getElementById("btnDecline").onclick = () => {
+        phone?.decline();
+        refreshState();
+      };
+
+      document.getElementById("btnHangup").onclick = () => {
+        phone?.hangup();
+        refreshState();
+      };
+
+      document.getElementById("btnMute").onclick = () => {
+        muted = !muted;
+        phone?.setMute(muted);
+        log("mute " + muted);
+        refreshState();
+      };
+    </script>
+  </body>
+</html>

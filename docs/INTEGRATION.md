@@ -120,6 +120,7 @@ Caddy снимает префикс у части путей (`handle_path`):
 | `/ws/*` | phone-server WebSocket |
 | `/demo/*` | demo UI + `POST /demo/session` |
 | `/embed/softphone.js` (+ `.map`) | IIFE-виджет |
+| `/embed/softphone-headless.js` (+ `.map`) | IIFE headless API |
 | `/manage/*` | Manage SPA |
 | `/monitor/*` | Monitor (**basic auth** в prod) |
 | `/embed`, `/softphone*` | редирект на `/demo/` |
@@ -451,6 +452,54 @@ Demo стенда **не** является production-auth: любой, кто 
 2. В `mount` укажите `wsBase: "wss://softphone.example.com"`.
 3. Скрипт можно грузить с домена Wosobo (`<script src="https://softphone.example.com/embed/softphone.js">`).
 
+### 8.5. Headless embed (`softphone-headless.js`)
+
+Для host UI без floating-виджета (например Bitrix24 `PAGE_BACKGROUND_WORKER`).
+
+| | |
+|--|--|
+| URL | `https://<DOMAIN>/embed/softphone-headless.js` (`Cache-Control: no-cache`) |
+| Глобаль | `WosoboSoftphoneHeadless` |
+| Версия | `WosoboSoftphoneHeadless.version` (с 0.2.0) |
+| Smoke | `/demo/headless.html` |
+
+```js
+const phone = WosoboSoftphoneHeadless.connect({
+  token,
+  nick,
+  wsBase,              // опционально
+  iceServers,          // опционально RTCIceServer[]
+  playRingtone: false, // default false
+  onLine(status, detail) {},
+  onCall(state, detail, caller) {},
+  onIncoming(caller, meta) {},
+  onRemoteStream(stream) {}, // звук уже в скрытом <audio>
+  onAuthLost() {
+    // mint новый token → connect снова
+  },
+  onError(err) {},
+  onReady() {},
+});
+
+await phone.dial("1004"); // любая непустая строка; Promise = SDP ушёл на WSS
+await phone.accept();
+phone.decline();
+phone.hangup();
+phone.setMute(true);
+phone.reconnect();
+phone.getState(); // { nick, line, lineDetail, call, callDetail, caller, muted }
+phone.disconnect(); // REGISTER на PBX не снимается
+```
+
+Отличия от `mount`:
+
+- нет floating UI / CSS / кнопок (допустим скрытый `<audio>`);
+- programmatic `dial` / `accept` / …;
+- singleton: повторный `connect` заменяет предыдущий;
+- `onAuthLost` — remint делает host (без `refreshSession` в MVP).
+
+Требования и план: [`HEADLESS-CLIENT-REQUIREMENTS.md`](../HEADLESS-CLIENT-REQUIREMENTS.md), [`PLAN-headless-client.md`](../PLAN-headless-client.md).
+
 ---
 
 ## 9. Сеть, TLS, медиа
@@ -481,8 +530,12 @@ flowchart LR
 
 1. Provision абонентов Manage API (или UI `/manage/`).
 2. Host-backend mint по правилам вашей auth.
-3. Страница: script + `mount`.
+3. Страница: script + `mount` **или** headless `connect` (своё UI / Bitrix).
 4. Опционально синхронизируйте CRM с `onLine` / `onCall` / `onIncoming`.
+
+### A2. Headless (Bitrix / своя карточка звонка)
+
+Как A, но скрипт `/embed/softphone-headless.js` и управление только из кода host (§8.5).
 
 ### B. Только provisioning из внешней системы
 

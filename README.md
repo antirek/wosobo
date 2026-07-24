@@ -32,7 +32,7 @@ flowchart LR
 
 1. В Manage задаёте **ник ↔ SIP** на вашей АТС (пароль только на сервере).
 2. Ваш backend минтает короткоживущий **session token**.
-3. Страница грузит `/embed/softphone.js` и вызывает `WosoboSoftphone.mount({ token, nick })`.
+3. Страница грузит `/embed/softphone.js` (`mount`) или `/embed/softphone-headless.js` (`connect`) — программный API без своего UI.
 4. Сигналинг — WSS к phone-server; медиа — WebRTC ↔ Janus ↔ SIP/RTP на PBX.
 5. Закрытие вкладки **не** снимает SIP REGISTER (always-on линия).
 
@@ -40,6 +40,7 @@ flowchart LR
 
 - **SIP-секреты не в браузере** — только ник и session token
 - **Встраиваемый виджет** — IIFE `WosoboSoftphone` для любой host-страницы
+- **Headless API** — `WosoboSoftphoneHeadless` для своего UI (Bitrix и т.п.)
 - **Manage API + UI** — CRUD абонентов, mint session, журнал звонков (CDR), OpenAPI
 - **Always-on REGISTER** — линия на АТС живёт без открытого softphone
 - **Absent announce** — офлайн softphone может ответить фразой вместо 486
@@ -71,8 +72,10 @@ docker compose -f dev_local/docker-compose.yml up -d --build
 |-----|-----|
 | https://service/manage/ | Manage UI — token `dev-manage-token` |
 | https://service/demo/ | Demo: ник → mint → виджет |
+| https://service/demo/headless.html | Headless smoke (без UI) |
 | https://service/monitor/ | Janus Monitor |
-| https://service/embed/softphone.js | Скрипт встройки |
+| https://service/embed/softphone.js | Виджет |
+| https://service/embed/softphone-headless.js | Headless API |
 | https://service/manage-api/api/manage/docs | OpenAPI |
 
 TLS: внутренний сертификат Caddy — один раз принять предупреждение в браузере. Softphone нужен **HTTPS** (или localhost) для микрофона.

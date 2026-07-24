@@ -19,7 +19,7 @@ app.use(
   "/embed",
   express.static(EMBED_DIR, {
     setHeaders(res, filePath) {
-      if (filePath.endsWith("softphone.js")) {
+      if (filePath.endsWith("softphone.js") || filePath.endsWith("softphone-headless.js")) {
         res.setHeader("Cache-Control", "no-cache");
       }
     },

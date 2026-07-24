@@ -49,13 +49,13 @@ function mount(opts) {
   const ui = createFloatingUi({
     nick,
     onDial(number) {
-      active?.session?.dial(number);
+      void active?.session?.dial(number).catch(() => {});
     },
     onHangup() {
       active?.session?.hangup();
     },
     onAccept() {
-      active?.session?.accept();
+      void active?.session?.accept().catch(() => {});
     },
     onDecline() {
       active?.session?.decline();
@@ -164,7 +164,7 @@ const WosoboSoftphone = {
   mount,
   unmount,
   reconnect,
-  version: "0.1.0",
+  version: "0.2.0",
 };
 
 export default WosoboSoftphone;

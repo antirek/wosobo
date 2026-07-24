@@ -37,6 +37,7 @@ function jitteredDelay(ms) {
  *   token: string,
  *   nick: string,
  *   wsBase?: string,
+ *   iceServers?: RTCIceServer[],
  *   refreshSession?: () => Promise<string>,
  * }} opts
  * @param {{
@@ -54,6 +55,32 @@ export function connectSoftphone(opts, callbacks = {}) {
   const log = (line) => callbacks.onLog?.(line);
   let currentToken = opts.token;
   let currentNick = opts.nick;
+  const defaultIceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+  const iceServers =
+    Array.isArray(opts.iceServers) && opts.iceServers.length > 0
+      ? opts.iceServers
+      : defaultIceServers;
+  /** @type {string} */
+  let lineStatus = "starting";
+  /** @type {string|undefined} */
+  let lineDetail;
+  /** @type {string|undefined} */
+  let callDetail;
+  /** @type {string|undefined} */
+  let callCaller;
+
+  function emitLine(status, detail) {
+    lineStatus = status;
+    lineDetail = detail;
+    callbacks.onLine?.(status, detail);
+  }
+
+  function emitCall(state, detail, caller) {
+    callDetail = detail;
+    if (caller !== undefined) callCaller = caller;
+    if (state === "idle") callCaller = undefined;
+    callbacks.onCall?.(state, detail, caller);
+  }
   /** @type {WebSocket | null} */
   let ws = null;
   let wantConnected = true;
@@ -142,7 +169,7 @@ export function connectSoftphone(opts, callbacks = {}) {
     phase = "idle";
     pendingOffer = null;
     cleanupPc();
-    callbacks.onCall?.("idle", reason);
+    emitCall("idle", reason);
   }
 
   function hangupDueToMedia(reason) {
@@ -166,7 +193,7 @@ export function connectSoftphone(opts, callbacks = {}) {
     iceRestartInFlight = true;
     clearIceDisconnectTimer();
     log(`ICE restart: ${reason || "media recovery"}`);
-    callbacks.onCall?.("reconnecting-media", reason || "ICE restart");
+    emitCall("reconnecting-media", reason || "ICE restart");
 
     clearIceRestartTimer();
     iceRestartTimer = setTimeout(() => {
@@ -212,15 +239,13 @@ export function connectSoftphone(opts, callbacks = {}) {
       clearIceRestartTimer();
       log("ICE recovered after restart");
       phase = "incall";
-      callbacks.onCall?.("incall", "media ok");
+      emitCall("incall", "media ok");
     }
   }
 
   async function ensurePc() {
     if (pc) return pc;
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    pc = new RTCPeerConnection({ iceServers });
     pc.onicecandidate = (ev) => {
       if (closed || !trickleEnabled || ws?.readyState !== WebSocket.OPEN) return;
       if (!ev.candidate) {
@@ -372,7 +397,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       send({ type: "update", jsep });
       trickleEnabled = true;
       phase = "incall";
-      callbacks.onCall?.("incall", "re-INVITE ok");
+      emitCall("incall", "re-INVITE ok");
     } catch (err) {
       callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
       hangupDueToMedia("Не удалось ответить на re-INVITE");
@@ -448,7 +473,7 @@ export function connectSoftphone(opts, callbacks = {}) {
     pendingRemoteCandidates = [];
     trickleEnabled = false;
     callbacks.onIncoming?.(caller, jsep);
-    callbacks.onCall?.("incoming", undefined, caller);
+    emitCall("incoming", undefined, caller);
   }
 
   function scheduleReconnect(reason) {
@@ -457,7 +482,7 @@ export function connectSoftphone(opts, callbacks = {}) {
     const idx = Math.min(reconnectAttempt, BACKOFF_MS.length - 1);
     const delay = jitteredDelay(BACKOFF_MS[idx]);
     reconnectAttempt += 1;
-    callbacks.onLine?.("reconnecting", reason || `попытка ${reconnectAttempt}`);
+    emitLine("reconnecting", reason || `попытка ${reconnectAttempt}`);
     log(`WSS reconnect in ${delay}ms (${reason || "retry"} #${reconnectAttempt})`);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -472,12 +497,12 @@ export function connectSoftphone(opts, callbacks = {}) {
       wantConnected = false;
       callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
       callbacks.onAuthLost?.();
-      callbacks.onLine?.("offline", "unauthorized");
+      emitLine("offline", "unauthorized");
       return;
     }
     if (sessionRefreshInFlight) return;
     sessionRefreshInFlight = true;
-    callbacks.onLine?.("reconnecting", "обновление сессии");
+    emitLine("reconnecting", "обновление сессии");
     log("session unauthorized → refresh token");
     try {
       const newToken = await opts.refreshSession();
@@ -491,7 +516,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       wantConnected = false;
       callbacks.onError?.(new Error("Сессия истекла — войдите снова"));
       callbacks.onAuthLost?.();
-      callbacks.onLine?.("offline", "unauthorized");
+      emitLine("offline", "unauthorized");
     } finally {
       sessionRefreshInFlight = false;
     }
@@ -537,7 +562,7 @@ export function connectSoftphone(opts, callbacks = {}) {
       localCallCleanup("signaling closed");
 
       if (!wantConnected || closed) {
-        callbacks.onLine?.("offline", "signaling closed");
+        emitLine("offline", "signaling closed");
         return;
       }
 
@@ -548,8 +573,15 @@ export function connectSoftphone(opts, callbacks = {}) {
 
       if (ev.code === 4003) {
         wantConnected = false;
-        callbacks.onError?.(new Error("Уже открыта другая вкладка softphone"));
-        callbacks.onLine?.("offline", ev.reason || `closed ${ev.code}`);
+        const replaced = String(ev.reason || "").toLowerCase().includes("replaced");
+        callbacks.onError?.(
+          new Error(
+            replaced
+              ? "Сессия заменена: softphone открыт в другом месте"
+              : "Не удалось подключить softphone (уже открыт в другом месте)",
+          ),
+        );
+        emitLine("offline", ev.reason || `closed ${ev.code}`);
         return;
       }
 
@@ -572,10 +604,10 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
       const type = msg.type;
       if (type === "hello") {
-        if (msg.line?.status) callbacks.onLine?.(msg.line.status, msg.line.detail);
+        if (msg.line?.status) emitLine(msg.line.status, msg.line.detail);
         if (msg.call?.state) {
           phase = msg.call.state;
-          callbacks.onCall?.(msg.call.state, msg.call.detail, msg.call.caller);
+          emitCall(msg.call.state, msg.call.detail, msg.call.caller);
           if (msg.call.state === "idle") {
             pendingOffer = null;
             cleanupPc();
@@ -587,12 +619,12 @@ export function connectSoftphone(opts, callbacks = {}) {
         return;
       }
       if (type === "line") {
-        callbacks.onLine?.(msg.status, msg.detail);
+        emitLine(msg.status, msg.detail);
         return;
       }
       if (type === "call") {
         phase = msg.state;
-        callbacks.onCall?.(msg.state, msg.detail, msg.caller);
+        emitCall(msg.state, msg.detail, msg.caller);
         if (msg.state === "idle") {
           pendingOffer = null;
           iceRestartTried = false;
@@ -654,7 +686,7 @@ export function connectSoftphone(opts, callbacks = {}) {
 
   function onBrowserOffline() {
     log("browser offline");
-    callbacks.onLine?.("reconnecting", "нет сети");
+    emitLine("reconnecting", "нет сети");
   }
 
   function onVisibility() {
@@ -676,17 +708,25 @@ export function connectSoftphone(opts, callbacks = {}) {
 
   return {
     async dial(number) {
+      const num = String(number ?? "").trim();
+      if (!num) {
+        const err = new Error("Пустой номер");
+        callbacks.onError?.(err);
+        throw err;
+      }
       if (phase !== "idle") {
-        callbacks.onError?.(new Error("Уже есть звонок"));
-        return;
+        const err = new Error("Уже есть звонок");
+        callbacks.onError?.(err);
+        throw err;
       }
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        callbacks.onError?.(new Error("Нет signaling — ждём переподключения"));
-        return;
+        const err = new Error("Нет signaling — ждём переподключения");
+        callbacks.onError?.(err);
+        throw err;
       }
       try {
         phase = "outgoing";
-        callbacks.onCall?.("outgoing", number);
+        emitCall("outgoing", num);
         pendingRemoteCandidates = [];
         trickleEnabled = false;
         await addLocalAudio();
@@ -694,12 +734,14 @@ export function connectSoftphone(opts, callbacks = {}) {
         const offer = await peer.createOffer({ offerToReceiveAudio: true });
         await peer.setLocalDescription(offer);
         const jsep = await finalizeLocalJsep(offer);
-        send({ type: "dial", number, jsep });
+        send({ type: "dial", number: num, jsep });
         trickleEnabled = true;
       } catch (err) {
         resetCallLocal();
-        callbacks.onCall?.("idle");
-        callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        emitCall("idle");
+        const e = err instanceof Error ? err : new Error(String(err));
+        callbacks.onError?.(e);
+        throw e;
       }
     },
 
@@ -710,13 +752,14 @@ export function connectSoftphone(opts, callbacks = {}) {
         return;
       }
       if (phase !== "incoming") {
-        callbacks.onError?.(new Error("Нет входящего"));
-        return;
+        const err = new Error("Нет входящего");
+        callbacks.onError?.(err);
+        throw err;
       }
       acceptInFlight = true;
       // Sync lock before any await — prevents double-accept during getUserMedia
       phase = "accepting";
-      callbacks.onCall?.("accepting");
+      emitCall("accepting");
       try {
         const offer = pendingOffer;
         pendingOffer = null;
@@ -741,13 +784,15 @@ export function connectSoftphone(opts, callbacks = {}) {
         phase = "incall";
         send({ type: "accept", jsep });
         trickleEnabled = true;
-        callbacks.onCall?.("incall");
+        emitCall("incall");
       } catch (err) {
         log(`accept failed: ${err.message || err}`);
         send({ type: "decline" });
         resetCallLocal();
-        callbacks.onCall?.("idle");
-        callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        emitCall("idle");
+        const e = err instanceof Error ? err : new Error(String(err));
+        callbacks.onError?.(e);
+        throw e;
       } finally {
         acceptInFlight = false;
       }
@@ -756,13 +801,13 @@ export function connectSoftphone(opts, callbacks = {}) {
     decline() {
       send({ type: "decline" });
       resetCallLocal();
-      callbacks.onCall?.("idle");
+      emitCall("idle");
     },
 
     hangup() {
       send({ type: "hangup" });
       resetCallLocal();
-      callbacks.onCall?.("idle");
+      emitCall("idle");
     },
 
     setMute(next) {
@@ -774,13 +819,25 @@ export function connectSoftphone(opts, callbacks = {}) {
       }
     },
 
+    getState() {
+      return {
+        nick: currentNick,
+        line: lineStatus,
+        lineDetail,
+        call: phase,
+        callDetail,
+        caller: callCaller,
+        muted,
+      };
+    },
+
     /** Manual resume after give-up / user request */
     reconnectNow() {
       if (closed) return;
       wantConnected = true;
       clearReconnectTimer();
       reconnectAttempt = 0;
-      callbacks.onLine?.("reconnecting", "вручную");
+      emitLine("reconnecting", "вручную");
       openWs();
     },
 
@@ -806,6 +863,7 @@ export function connectSoftphone(opts, callbacks = {}) {
         /* ignore */
       }
       ws = null;
+      emitLine("offline", "disconnected");
     },
   };
 }

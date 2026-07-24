@@ -33,6 +33,12 @@
 	handle /embed/softphone.js.map {
 		reverse_proxy static:3140
 	}
+	handle /embed/softphone-headless.js {
+		reverse_proxy static:3140
+	}
+	handle /embed/softphone-headless.js.map {
+		reverse_proxy static:3140
+	}
 	redir /embed /demo/ 308
 	redir /embed/ /demo/ 308
 	redir /embed/demo.html /demo/ 308
@@ -55,7 +61,8 @@
 		respond `Wosobo softphone stand
 
 		/demo/ — host-backend softphone demo
-		/embed/softphone.js — embed script
+		/embed/softphone.js — embed widget
+		/embed/softphone-headless.js — headless API
 		/manage/ — manage UI
 		/monitor/ — Janus monitor
 		/manage-api/ — manage API
