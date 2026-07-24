@@ -31,7 +31,7 @@ cd result && docker-compose up -d
 | Параметр | Обязательный | Описание |
 |----------|--------------|----------|
 | **DOMAIN** | да | Публичное DNS-имя. Браузер: `https://DOMAIN/…`. Softphone — HTTPS (или localhost). |
-| **PUBLIC_IP** | да | IP для RTP с точки зрения внешней PBX (`sdp_ip`). Обычно белый IP / DNAT. |
+| **PUBLIC_IP** | да | IP для RTP: (1) `sdp_ip` к PBX, (2) `nat_1_1_mapping` в Janus для WebRTC к браузеру. Без правильного IP ICE зависает на `checking`, звука нет. |
 | **TLS_MODE** | да | `auto` — Let's Encrypt; `internal` — самоподписанный; `off` — HTTP only. |
 | **TLS_EMAIL** | при `auto` | Email для ACME (Let's Encrypt). Нужен **реальный** ящик с публичным TLD — не `@test.local` / `@example.com` (LE ответит `invalidContact`). |
 | **MANAGE_API_TOKEN** | нет* | Bearer manage-api / mint. Пусто → сгенерирует configure. |
