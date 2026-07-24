@@ -12,5 +12,5 @@ admin: {
 }
 
 cors: {
-	allow_origin = "https://softphone.test.local"
+	allow_origin = "__PUBLIC_ORIGIN__"
 }

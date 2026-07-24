@@ -47,7 +47,7 @@ general: {
 									# without this, the Admin API MUST
 									# be enabled, as tokens are added and removed
 									# through messages sent there.
-	admin_secret = "b522f8d7959cae8c97280257e27bb423ee1d3d8fc3dd995e"	# String that all Janus requests must contain
+	admin_secret = "__JANUS_ADMIN_SECRET__"	# String that all Janus requests must contain
 									# to be accepted/authorized by the admin/monitor.
 									# only needed if you enabled the admin API
 									# in any of the available transports.

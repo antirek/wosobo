@@ -1,13 +1,13 @@
 #!/bin/sh
+# Build (and optionally push) the wosobo application image.
 set -eu
 
-# Run from anywhere; build context is always the repo root (packages/*).
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 IMAGE="${IMAGE:-antirek/wosobo:0.0.2}"
 PUSH="${PUSH:-1}"
 
 echo "building ${IMAGE} (context: ${ROOT})..."
-docker build -f "${ROOT}/prod_deploy/Dockerfile" -t "${IMAGE}" "${ROOT}"
+docker build -f "${ROOT}/build/Dockerfile" -t "${IMAGE}" "${ROOT}"
 
 if [ "${PUSH}" = "1" ]; then
   echo "pushing ${IMAGE}..."

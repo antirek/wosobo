@@ -1,10 +1,13 @@
 # Production deploy template for Wosobo softphone stand.
 #
-# From repository root:
-#   cp prod_deploy/.env.example prod_deploy/.env   # edit secrets / host
-#   docker compose -f prod_deploy/docker-compose.yml --env-file prod_deploy/.env up -d
+# 1. cp install.env.example install.env  &&  edit DOMAIN / PUBLIC_IP / TLS_*
+# 2. ./configure.sh
+# 3. docker-compose --env-file .env up -d
 #
-# Image `wosobo` runs: phone-server, manage-api, monitor, softphone-demo, static-server.
+# From repository root:
+#   docker-compose -f prod_deploy/docker-compose.yml --env-file prod_deploy/.env up -d
+#
+# Image `wosobo`: phone-server, manage-api, monitor, softphone-demo, static-server.
 # SIP PBX — внешний. В compose: Mongo / Janus / Caddy / wosobo.
 
 services:

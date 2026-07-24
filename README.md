@@ -151,6 +151,10 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 - **embed** — `GET /embed/softphone.js` → `WosoboSoftphone.mount({ token, nick })`
 - **softphone-demo** — пример host: `POST /demo/session` (mint через manage token)
 
-## Deploy (production)
+## Build / Deploy
 
-Шаблон: [`prod_deploy/`](./prod_deploy/) — образ **`wosobo`**, compose без тестового Asterisk (внешняя PBX). Локальный стенд: [`dev_local/`](./dev_local/). См. [`prod_deploy/README.md`](./prod_deploy/README.md).
+| Каталог | Назначение |
+|---------|------------|
+| [`build/`](./build/) | Сборка Docker-образа **`wosobo`** (`./build/build.sh`) |
+| [`prod_deploy/`](./prod_deploy/) | Установка на сервер: `install.env` → `configure.sh` → compose |
+| [`dev_local/`](./dev_local/) | Локальный стенд с тестовым Asterisk |

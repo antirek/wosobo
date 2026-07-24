@@ -2,6 +2,6 @@
 **/dist
 .git
 dev_local
-prod_deploy/janus
+prod_deploy
 *.md
 package-lock.json
