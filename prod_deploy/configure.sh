@@ -124,15 +124,20 @@ PY
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required for configure.sh"
 
-render templates/env .env
-render templates/caddy/Caddyfile caddy/Caddyfile
-render templates/janus/janus.plugin.sip.jcfg janus/janus.plugin.sip.jcfg
-render templates/janus/janus.jcfg janus/janus.jcfg
-render templates/janus/janus.transport.http.jcfg janus/janus.transport.http.jcfg
-render templates/janus/janus.transport.websockets.jcfg janus/janus.transport.websockets.jcfg
+OUT="${OUT:-$ROOT/result}"
+mkdir -p "$OUT"
 
-# Save secrets echo for operator (also in .env)
-cat > .configure-summary.txt <<EOF
+render templates/env "$OUT/.env"
+render templates/caddy/Caddyfile "$OUT/caddy/Caddyfile"
+render templates/janus/janus.plugin.sip.jcfg "$OUT/janus/janus.plugin.sip.jcfg"
+render templates/janus/janus.jcfg "$OUT/janus/janus.jcfg"
+render templates/janus/janus.transport.http.jcfg "$OUT/janus/janus.transport.http.jcfg"
+render templates/janus/janus.transport.websockets.jcfg "$OUT/janus/janus.transport.websockets.jcfg"
+# compose has no placeholders — copy as-is (paths relative to result/)
+cp templates/docker-compose.yml "$OUT/docker-compose.yml"
+echo "wrote $OUT/docker-compose.yml"
+
+cat > "$OUT/SUMMARY.txt" <<EOF
 configure OK ($(date -Iseconds 2>/dev/null || date))
 
 DOMAIN=$DOMAIN
@@ -146,17 +151,17 @@ MANAGE_API_TOKEN=$MANAGE_API_TOKEN
 INTERNAL_TOKEN=$INTERNAL_TOKEN
 JANUS_ADMIN_SECRET=$JANUS_ADMIN_SECRET
 
-Next:
-  docker compose -f docker-compose.yml --env-file .env up -d
-  # or from repo root:
-  # docker compose -f prod_deploy/docker-compose.yml --env-file prod_deploy/.env up -d
+Deploy this directory (result/) to the server, then:
+
+  cd result   # or wherever you copied it
+  docker-compose up -d
 
 Manage UI: ${PUBLIC_ORIGIN}/manage/
 Demo:      ${PUBLIC_ORIGIN}/demo/
 EOF
 
 echo ""
-echo "=== configure summary ==="
-cat .configure-summary.txt
+echo "=== configure summary (also result/SUMMARY.txt) ==="
+cat "$OUT/SUMMARY.txt"
 echo ""
-echo "(summary also in .configure-summary.txt — keep secrets private)"
+echo "output directory: $OUT"

@@ -1,8 +1,6 @@
 node_modules/
 dist/
 .env
-prod_deploy/.env
 prod_deploy/install.env
-prod_deploy/.configure-summary.txt
 *.log
 .DS_Store
