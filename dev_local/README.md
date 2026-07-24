@@ -4,4 +4,3 @@
 #   docker compose -f dev_local/docker-compose.yml up -d --build
 #
 # Configs in this directory: asterisk/, caddy/, janus/
-# Production template: ../prod_deploy/

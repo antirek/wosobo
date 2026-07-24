@@ -13,9 +13,9 @@
 | static-server (embed + manage) | 3140 |
 
 **В compose:** MongoDB, Janus, Caddy.  
-**Снаружи:** SIP PBX. Локальный стенд с тестовым Asterisk — [`../dev_local/`](../dev_local/).
+**Снаружи:** SIP PBX.
 
-Caddy — reverse proxy (`caddy:2.8-alpine` + [`Caddyfile`](./Caddyfile)). Aliases у `wosobo`: `phone-server`, `manage-api`, `monitor`, `softphone-demo`, `static`.
+Caddy — reverse proxy (`caddy:2.8-alpine` + [`caddy/Caddyfile`](./caddy/Caddyfile)). Aliases у `wosobo`: `phone-server`, `manage-api`, `monitor`, `softphone-demo`, `static`.
 
 ## Запуск
 
@@ -37,8 +37,8 @@ IMAGE=antirek/wosobo:0.0.2 ./prod_deploy/docker-build.sh
 
 ## Конфиги
 
-- [`janus/`](./janus/) — production Janus (правите `sdp_ip` и т.д.)
-- [`Caddyfile`](./Caddyfile) — front door
+- [`janus/`](./janus/) — Janus (`sdp_ip` и т.д.)
+- [`caddy/`](./caddy/) — front door (`Caddyfile`)
 
 ## Проверка
 

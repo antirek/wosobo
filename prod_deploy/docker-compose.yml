@@ -6,7 +6,6 @@
 #
 # Image `wosobo` runs: phone-server, manage-api, monitor, softphone-demo, static-server.
 # SIP PBX — внешний. В compose: Mongo / Janus / Caddy / wosobo.
-# Локальный тестовый стенд: ../dev_local/
 
 services:
   mongo:
@@ -59,7 +58,7 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on:
       - wosobo
