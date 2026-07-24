@@ -2,5 +2,6 @@ node_modules/
 dist/
 .env
 prod_deploy/install.env
+prod_deploy/result/
 *.log
 .DS_Store
