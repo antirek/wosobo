@@ -62,7 +62,7 @@ docker-compose up -d --build
 4. Monitor: https://service/monitor/
 5. OpenAPI: https://service/manage-api/api/manage/docs
 
-После правок UI/embed: `docker-compose up -d --build caddy softphone-demo`
+После правок UI/embed: `docker-compose up -d --build static softphone-demo`
 
 ### Host backend demo
 
@@ -148,3 +148,7 @@ SIP server в manage — hostname **с точки зрения Janus** (`asteris
 - **phone-server** — HTTP `:3101` (`DELETE /api/session`, `/internal/…`); WebSocket `:3102` (`/ws/softphone?token=…&nick=…`)
 - **embed** — `GET /embed/softphone.js` → `WosoboSoftphone.mount({ token, nick })`
 - **softphone-demo** — пример host: `POST /demo/session` (mint через manage token)
+
+## Deploy
+
+Шаблон: [`deploy/`](./deploy/) — образ **`wosobo`** (apps + static embed/manage) и compose с Mongo / Asterisk / Janus / Caddy (proxy-only). См. [`deploy/README.md`](./deploy/README.md).

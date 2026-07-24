@@ -87,20 +87,31 @@ services:
       - manage-api
     restart: unless-stopped
 
-  caddy:
+  # embed + manage UI (same role as static-server inside deploy wosobo image)
+  static:
     build:
       context: .
-      dockerfile: caddy/Dockerfile
+      dockerfile: packages/static-server/Dockerfile
+    environment:
+      PORT: "3140"
+      STATIC_ROOT: /srv
+    restart: unless-stopped
+
+  # Same as deploy: stock Caddy image, proxy-only Caddyfile
+  caddy:
+    image: caddy:2.8-alpine
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on:
       - phone-server
       - manage-api
       - monitor
       - softphone-demo
+      - static
     restart: unless-stopped
 
 volumes:

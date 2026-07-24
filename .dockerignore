@@ -1,9 +1,6 @@
 **/node_modules
 **/dist
 .git
-packages/phone-server
-packages/manage-api
-packages/monitor
 asterisk
 janus
 *.md

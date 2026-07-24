@@ -1,4 +1,5 @@
-# Front door: https://service/...  (WebRTC needs secure context)
+# Front door: reverse-proxy only (no static root).
+# Static (embed + manage UI) → static:3140 (@wosobo/static-server).
 # /etc/hosts: 127.0.0.1 service
 # Also: http://localhost/... (localhost is a secure context on HTTP)
 {
@@ -8,60 +9,50 @@
 (app) {
 	encode gzip
 
-	# More specific than /manage* — must come first
 	handle_path /manage-api* {
 		reverse_proxy manage-api:3121
 	}
 
-	# Частая ошибка: /api/manage/* → manage-api
 	redir /api/manage* /manage-api{uri} 308
 
-	# phone-server: HTTP API (health + DELETE session)
 	handle /api/* {
 		reverse_proxy phone-server:3101
 	}
-	# phone-server: WebSocket signaling (external)
 	handle /ws/* {
 		reverse_proxy phone-server:3102
 	}
 
-	# Host-backend demo (mint via MANAGE_API_TOKEN server-side)
 	redir /demo /demo/ 308
 	handle_path /demo* {
 		reverse_proxy softphone-demo:3130
 	}
 
-	# Embed script only (IIFE)
 	handle /embed/softphone.js {
-		header Cache-Control "no-cache"
-		root * /srv
-		file_server
+		reverse_proxy static:3140
+	}
+	handle /embed/softphone.js.map {
+		reverse_proxy static:3140
 	}
 	redir /embed /demo/ 308
 	redir /embed/ /demo/ 308
 	redir /embed/demo.html /demo/ 308
 
-	# Legacy softphone path → demo
 	redir /softphone /demo/ 308
 	redir /softphone/ /demo/ 308
 	redir /softphone/* /demo/ 308
 
-	# Manage UI
 	redir /manage /manage/ 308
 	handle /manage* {
-		root * /srv
-		try_files {path} /manage/index.html
-		file_server
+		reverse_proxy static:3140
 	}
 
-	# Monitor
 	redir /monitor /monitor/ 308
 	handle_path /monitor/* {
 		reverse_proxy monitor:3110
 	}
 
 	handle / {
-		respond `Janus softphone stand
+		respond `Wosobo softphone stand
 
 		/demo/ — host-backend softphone demo
 		/embed/softphone.js — embed script
